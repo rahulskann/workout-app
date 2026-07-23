@@ -1,0 +1,20 @@
+{
+  "name": "workout-cycle-app",
+  "version": "1.0.0",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-av": "~14.0.0",
+    "expo-print": "~13.0.0",
+    "expo-sharing": "~12.0.0",
+    "react": "18.2.0",
+    "react-native": "0.74.0",
+    "@react-native-async-storage/async-storage": "1.23.1"
+  },
+  "private": true
+}

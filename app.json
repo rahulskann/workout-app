@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "5-Day Workout Cycle",
+    "slug": "workout-cycle-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#121212",
+    "android": {
+      "package": "com.yourname.workoutcycle",
+      "backgroundColor": "#121212"
+    },
+    "ios": {
+      "bundleIdentifier": "com.yourname.workoutcycle",
+      "supportsTablet": false
+    }
+  }
+}
