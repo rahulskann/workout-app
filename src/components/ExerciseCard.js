@@ -3,55 +3,107 @@ import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-nativ
 import { colors } from '../theme/colors';
 import VideoModal from './VideoModal';
 
-// Top (max) weight logged in a single past session - used for the
-// "Last 2" quick-stat line.
-function sessionTopWeight(entry) {
-  if (!entry || !entry.sets || entry.sets.length === 0) return 0;
-  return Math.max(...entry.sets.map((s) => s.weight));
-}
+const WEIGHT_STEP = 5;
 
 export default function ExerciseCard({ exercise, onLog }) {
-  const targetSets = exercise.targetSets || 1;
+  if (exercise.logType === 'checkbox') {
+    return <CheckboxCard exercise={exercise} onLog={onLog} />;
+  }
+  return <WeightedCard exercise={exercise} onLog={onLog} />;
+}
+
+// ---------- Checkbox variant (warm-ups, cooldowns, mobility routines) ----------
+
+function CheckboxCard({ exercise, onLog }) {
+  const [videoVisible, setVideoVisible] = useState(false);
+
+  return (
+    <View style={[styles.card, exercise.completedToday && styles.cardDone]}>
+      <View style={styles.row}>
+        <TouchableOpacity
+          style={styles.thumb}
+          onPress={() => setVideoVisible(true)}
+          disabled={!exercise.videoUri}
+        >
+          <Text style={styles.thumbIcon}>▶</Text>
+        </TouchableOpacity>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{exercise.name}</Text>
+          <View style={styles.metaRow}>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>{exercise.targetGroup}</Text>
+            </View>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.checkbox, exercise.completedToday && styles.checkboxChecked]}
+          onPress={() => onLog(exercise, {})}
+          disabled={exercise.completedToday}
+        >
+          {exercise.completedToday ? <Text style={styles.checkboxMark}>✓</Text> : null}
+        </TouchableOpacity>
+      </View>
+
+      <VideoModal
+        visible={videoVisible}
+        onClose={() => setVideoVisible(false)}
+        videoUri={exercise.videoUri}
+      />
+    </View>
+  );
+}
+
+// ---------- Weighted variant (lifts) ----------
+
+function WeightedCard({ exercise, onLog }) {
   const [expanded, setExpanded] = useState(false);
   const [videoVisible, setVideoVisible] = useState(false);
-  const [weights, setWeights] = useState(() => Array(targetSets).fill(''));
-  const [overridden, setOverridden] = useState(() => Array(targetSets).fill(false));
   const [reps, setReps] = useState('12');
+  const [masterWeight, setMasterWeight] = useState('');
+  const [setWeights, setSetWeights] = useState(Array(exercise.targetSets).fill(''));
+  const [touched, setTouched] = useState(Array(exercise.targetSets).fill(false));
 
   const history = exercise.history || [];
   const lastTwoLabel =
-    history.length > 0 ? history.map((h) => `${sessionTopWeight(h)}lbs`).join(', ') : '—';
+    history.length > 0
+      ? history.map((h) => `${Math.max(...h.sets)}lbs`).join(', ')
+      : '—';
 
-  // Set 1's field acts as the "default" - typing into it fills every set
-  // that hasn't been individually edited yet. Editing a later set's field
-  // directly only changes that one field (it "detaches" from the default),
-  // so you only need to touch the sets that actually differ.
-  const handleSetWeightChange = (index, value) => {
-    if (index === 0) {
-      setWeights((prev) => prev.map((w, i) => (overridden[i] ? w : value)));
-    } else {
-      setOverridden((prev) => prev.map((o, i) => (i === index ? true : o)));
-      setWeights((prev) => prev.map((w, i) => (i === index ? value : w)));
-    }
+  // Typing in the master field fills every set that hasn't been
+  // individually nudged -- ease-of-use default, no retyping per set.
+  const handleMasterWeightChange = (val) => {
+    setMasterWeight(val);
+    setSetWeights((prev) => prev.map((w, i) => (touched[i] ? w : val)));
+  };
+
+  const displayValueForSet = (idx) => {
+    const raw = setWeights[idx] || masterWeight;
+    return raw ? parseFloat(raw) : 0;
+  };
+
+  const nudgeSet = (idx, direction) => {
+    const current = displayValueForSet(idx);
+    const next = Math.max(0, current + direction * WEIGHT_STEP);
+    setSetWeights((prev) => prev.map((w, i) => (i === idx ? String(next) : w)));
+    setTouched((prev) => prev.map((t, i) => (i === idx ? true : t)));
   };
 
   const resetForm = () => {
-    setWeights(Array(targetSets).fill(''));
-    setOverridden(Array(targetSets).fill(false));
     setReps('12');
+    setMasterWeight('');
+    setSetWeights(Array(exercise.targetSets).fill(''));
+    setTouched(Array(exercise.targetSets).fill(false));
     setExpanded(false);
   };
 
   const handleLog = () => {
-    const r = parseInt(reps, 10);
-    const parsedWeights = weights.map((w) => parseFloat(w));
-    if (!r || parsedWeights.some((w) => !w && w !== 0)) return;
-    onLog(exercise, { sets: parsedWeights.map((weight) => ({ weight, reps: r })) });
+    const repsNum = parseInt(reps, 10);
+    const setsNum = setWeights.map((w, i) => parseFloat(w || masterWeight));
+    if (!repsNum || setsNum.some((w) => !w)) return;
+    onLog(exercise, { reps: repsNum, sets: setsNum });
     resetForm();
-  };
-
-  const handleToggleDone = () => {
-    onLog(exercise, { done: true });
   };
 
   return (
@@ -76,55 +128,63 @@ export default function ExerciseCard({ exercise, onLog }) {
             </View>
             <Text style={styles.metaText}>{exercise.targetSets} Sets</Text>
           </View>
-          {!exercise.noWeight && (
-            <Text style={styles.statsText}>
-              PR: {exercise.maxWeight || 0} lbs · Last 2: {lastTwoLabel}
-            </Text>
-          )}
+          <Text style={styles.statsText}>
+            PR: {exercise.maxWeight || 0} lbs · Last 2: {lastTwoLabel}
+          </Text>
         </View>
 
-        {exercise.noWeight ? (
-          <TouchableOpacity
-            style={[styles.checkbox, exercise.completedToday && styles.checkboxChecked]}
-            onPress={handleToggleDone}
-          >
-            {exercise.completedToday ? <Text style={styles.checkmark}>✓</Text> : null}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.logButton} onPress={() => setExpanded((v) => !v)}>
-            <Text style={styles.logButtonText}>{expanded ? '×' : '+'}</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity style={styles.editButton} onPress={() => setExpanded((v) => !v)}>
+          <Text style={styles.editButtonText}>{expanded ? '✕' : '✏️'}</Text>
+        </TouchableOpacity>
       </View>
 
-      {expanded && !exercise.noWeight && (
+      {expanded && (
         <View style={styles.logForm}>
-          {Array.from({ length: targetSets }).map((_, i) => (
-            <View key={i} style={styles.setRow}>
-              <Text style={styles.setLabel}>Set {i + 1}</Text>
-              <TextInput
-                style={styles.setInput}
-                placeholder="Weight"
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="numeric"
-                value={weights[i]}
-                onChangeText={(v) => handleSetWeightChange(i, v)}
-              />
-            </View>
-          ))}
-          <View style={styles.repsRow}>
+          <View style={styles.formRow}>
             <TextInput
               style={styles.input}
-              placeholder="Reps (all sets)"
+              placeholder="Reps"
               placeholderTextColor={colors.textSecondary}
               keyboardType="numeric"
               value={reps}
               onChangeText={setReps}
             />
-            <TouchableOpacity style={styles.saveButton} onPress={handleLog}>
-              <Text style={styles.saveButtonText}>Log</Text>
-            </TouchableOpacity>
+            <TextInput
+              style={styles.input}
+              placeholder="Weight (all sets)"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="numeric"
+              value={masterWeight}
+              onChangeText={handleMasterWeightChange}
+            />
           </View>
+
+          {exercise.targetSets > 1 && (
+            <View style={styles.perSetWrap}>
+              {setWeights.map((_, i) => (
+                <View key={i} style={styles.perSetRow}>
+                  <Text style={styles.perSetLabel}>Set {i + 1}</Text>
+                  <TouchableOpacity
+                    style={styles.stepButton}
+                    onPress={() => nudgeSet(i, -1)}
+                  >
+                    <Text style={styles.stepButtonText}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.perSetValue}>{displayValueForSet(i) || 0} lbs</Text>
+                  <TouchableOpacity
+                    style={styles.stepButton}
+                    onPress={() => nudgeSet(i, 1)}
+                  >
+                    <Text style={styles.stepButtonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.saveButton} onPress={handleLog}>
+            <Text style={styles.saveButtonText}>Log</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -174,7 +234,7 @@ const styles = StyleSheet.create({
   pillText: { color: colors.textSecondary, fontSize: 12 },
   metaText: { color: colors.textSecondary, fontSize: 12 },
   statsText: { color: colors.textSecondary, fontSize: 12, marginTop: 4 },
-  logButton: {
+  editButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -183,13 +243,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  logButtonText: { color: colors.accent, fontSize: 18, fontWeight: '700' },
+  editButtonText: { fontSize: 14 },
   checkbox: {
     width: 28,
     height: 28,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: colors.accent,
+    borderColor: colors.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
@@ -198,32 +258,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
     borderColor: colors.success,
   },
-  checkmark: { color: '#0A0A0A', fontWeight: '700' },
+  checkboxMark: { color: '#0A0A0A', fontWeight: '700' },
   logForm: {
     marginTop: 12,
-    gap: 8,
   },
-  setRow: {
+  formRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  setLabel: { color: colors.textSecondary, fontSize: 12, width: 44 },
-  setInput: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    color: colors.textPrimary,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  repsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 8,
   },
   input: {
     flex: 1,
@@ -234,12 +275,37 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    marginRight: 8,
+  },
+  perSetWrap: { marginTop: 10 },
+  perSetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  perSetLabel: { color: colors.textSecondary, fontSize: 12, width: 44 },
+  stepButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: colors.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepButtonText: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  perSetValue: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    width: 70,
+    textAlign: 'center',
   },
   saveButton: {
     backgroundColor: colors.accent,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 9,
+    alignItems: 'center',
+    marginTop: 10,
   },
   saveButtonText: { color: '#0A0A0A', fontWeight: '700' },
 });
