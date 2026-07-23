@@ -1,22 +1,35 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Modal, View, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors } from '../theme/colors';
 
 export default function VideoModal({ visible, onClose, videoUri }) {
+  // Hooks must run every render regardless of videoUri/visible, so this is
+  // created unconditionally and just left idle if there's no source yet.
+  const player = useVideoPlayer(videoUri || null, (p) => {
+    p.loop = true;
+  });
+
+  useEffect(() => {
+    if (!player) return;
+    if (visible) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [visible, player]);
+
   if (!videoUri) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.playerWrap}>
-          <Video
-            source={videoUri}
+          <VideoView
             style={styles.video}
-            resizeMode={ResizeMode.COVER}
-            isLooping
-            shouldPlay
-            useNativeControls={false}
+            player={player}
+            nativeControls={false}
+            contentFit="cover"
           />
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>

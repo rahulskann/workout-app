@@ -7,7 +7,7 @@ export default function ExerciseCard({ exercise, onLog }) {
   const [expanded, setExpanded] = useState(false);
   const [videoVisible, setVideoVisible] = useState(false);
   const [weight, setWeight] = useState('');
-  const [reps, setReps] = useState('');
+  const [reps, setReps] = useState('12');
 
   const history = exercise.history || [];
   const lastTwoLabel =
@@ -19,7 +19,7 @@ export default function ExerciseCard({ exercise, onLog }) {
     if (!w || !r) return;
     onLog(exercise, { weight: w, reps: r });
     setWeight('');
-    setReps('');
+    setReps('12');
     setExpanded(false);
   };
 
