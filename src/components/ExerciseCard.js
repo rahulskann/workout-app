@@ -6,6 +6,7 @@ import VideoModal from './VideoModal';
 
 const WEIGHT_STEP = 5;
 const REPS_STEP = 1;
+const DEFAULT_REPS = 12;
 
 export default function ExerciseCard({ exercise, onLog, alwaysShowForm }) {
   const { settings } = useSettings();
@@ -70,53 +71,83 @@ function CheckboxCard({ exercise, onLog, colors }) {
 
 // ---------- Weighted variant (lifts) ----------
 
+function makeDefaultSets(count) {
+  return Array.from({ length: count }, () => ({ weight: 0, reps: DEFAULT_REPS }));
+}
+
 function WeightedCard({ exercise, onLog, colors, alwaysShowForm }) {
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
   const [videoVisible, setVideoVisible] = useState(false);
-  const [reps, setReps] = useState(12);
-  const [setWeights, setSetWeights] = useState(Array(exercise.targetSets).fill(0));
-  // touched[0] is unused -- Set 1 is always the driver. touched[i] for i>0
-  // means that set was individually nudged and should stop mirroring Set 1.
-  const [touched, setTouched] = useState(Array(exercise.targetSets).fill(false));
+  const [sets, setSets] = useState(makeDefaultSets(exercise.targetSets));
+  // touched*[0] is unused -- Set 1 always drives the others until they're
+  // individually nudged, same rule for both weight and reps.
+  const [touchedWeight, setTouchedWeight] = useState(Array(exercise.targetSets).fill(false));
+  const [touchedReps, setTouchedReps] = useState(Array(exercise.targetSets).fill(false));
 
   const isOpen = alwaysShowForm || expanded;
+  const originalSetCount = exercise.targetSets;
 
   const history = exercise.history || [];
   const lastTwoLabel =
     history.length > 0
-      ? history.map((h) => `${Math.max(...(h.sets || [h.weight || 0]))}lbs`).join(', ')
+      ? history.map((h) => `${Math.max(...(h.sets || []).map((s) => s.weight))}lbs`).join(', ')
       : '—';
 
-  const nudgeReps = (direction) => {
-    setReps((prev) => Math.max(1, prev + direction * REPS_STEP));
-  };
-
-  const nudgeSet = (idx, direction) => {
+  const nudgeWeight = (idx, direction) => {
     if (idx === 0) {
-      // Set 1 drives every set that hasn't been individually touched.
-      setSetWeights((prev) => {
-        const nextSet1 = Math.max(0, prev[0] + direction * WEIGHT_STEP);
-        return prev.map((w, i) => (i === 0 || !touched[i] ? nextSet1 : w));
+      setSets((prev) => {
+        const next = Math.max(0, prev[0].weight + direction * WEIGHT_STEP);
+        return prev.map((s, i) => (i === 0 || !touchedWeight[i] ? { ...s, weight: next } : s));
       });
     } else {
-      setSetWeights((prev) =>
-        prev.map((w, i) => (i === idx ? Math.max(0, w + direction * WEIGHT_STEP) : w))
+      setSets((prev) =>
+        prev.map((s, i) =>
+          i === idx ? { ...s, weight: Math.max(0, s.weight + direction * WEIGHT_STEP) } : s
+        )
       );
-      setTouched((prev) => prev.map((t, i) => (i === idx ? true : t)));
+      setTouchedWeight((prev) => prev.map((t, i) => (i === idx ? true : t)));
     }
   };
 
+  const nudgeReps = (idx, direction) => {
+    if (idx === 0) {
+      setSets((prev) => {
+        const next = Math.max(1, prev[0].reps + direction * REPS_STEP);
+        return prev.map((s, i) => (i === 0 || !touchedReps[i] ? { ...s, reps: next } : s));
+      });
+    } else {
+      setSets((prev) =>
+        prev.map((s, i) =>
+          i === idx ? { ...s, reps: Math.max(1, s.reps + direction * REPS_STEP) } : s
+        )
+      );
+      setTouchedReps((prev) => prev.map((t, i) => (i === idx ? true : t)));
+    }
+  };
+
+  const addSet = () => {
+    setSets((prev) => [...prev, { weight: prev[0]?.weight ?? 0, reps: prev[0]?.reps ?? DEFAULT_REPS }]);
+    setTouchedWeight((prev) => [...prev, false]);
+    setTouchedReps((prev) => [...prev, false]);
+  };
+
+  const removeSet = (idx) => {
+    setSets((prev) => prev.filter((_, i) => i !== idx));
+    setTouchedWeight((prev) => prev.filter((_, i) => i !== idx));
+    setTouchedReps((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const resetForm = () => {
-    setReps(12);
-    setSetWeights(Array(exercise.targetSets).fill(0));
-    setTouched(Array(exercise.targetSets).fill(false));
+    setSets(makeDefaultSets(exercise.targetSets));
+    setTouchedWeight(Array(exercise.targetSets).fill(false));
+    setTouchedReps(Array(exercise.targetSets).fill(false));
     if (!alwaysShowForm) setExpanded(false);
   };
 
   const handleLog = () => {
-    if (!reps || setWeights.some((w) => !w)) return;
-    onLog(exercise, { reps, sets: setWeights });
+    if (sets.length === 0 || sets.some((s) => !s.weight || !s.reps)) return;
+    onLog(exercise, { sets });
     resetForm();
   };
 
@@ -156,31 +187,44 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm }) {
 
       {isOpen && (
         <View style={styles.logForm}>
-          <View style={styles.stepperRow}>
-            <Text style={styles.stepperLabel}>Reps</Text>
-            <TouchableOpacity style={styles.stepButton} onPress={() => nudgeReps(-1)}>
-              <Text style={styles.stepButtonText}>−</Text>
-            </TouchableOpacity>
-            <Text style={styles.stepperValue}>{reps}</Text>
-            <TouchableOpacity style={styles.stepButton} onPress={() => nudgeReps(1)}>
-              <Text style={styles.stepButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.perSetWrap}>
-            {setWeights.map((w, i) => (
-              <View key={i} style={styles.stepperRow}>
-                <Text style={styles.stepperLabel}>Set {i + 1}</Text>
-                <TouchableOpacity style={styles.stepButton} onPress={() => nudgeSet(i, -1)}>
-                  <Text style={styles.stepButtonText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{w} lbs</Text>
-                <TouchableOpacity style={styles.stepButton} onPress={() => nudgeSet(i, 1)}>
-                  <Text style={styles.stepButtonText}>+</Text>
-                </TouchableOpacity>
+          {sets.map((s, i) => (
+            <View key={i} style={styles.setBlock}>
+              <View style={styles.setHeaderRow}>
+                <Text style={styles.setLabel}>Set {i + 1}</Text>
+                {i >= originalSetCount && (
+                  <TouchableOpacity onPress={() => removeSet(i)}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ))}
-          </View>
+              <View style={styles.setRow}>
+                <View style={styles.stepperGroup}>
+                  <Text style={styles.stepperMiniLabel}>Reps</Text>
+                  <TouchableOpacity style={styles.stepButton} onPress={() => nudgeReps(i, -1)}>
+                    <Text style={styles.stepButtonText}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>{s.reps}</Text>
+                  <TouchableOpacity style={styles.stepButton} onPress={() => nudgeReps(i, 1)}>
+                    <Text style={styles.stepButtonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.stepperGroup}>
+                  <Text style={styles.stepperMiniLabel}>Weight</Text>
+                  <TouchableOpacity style={styles.stepButton} onPress={() => nudgeWeight(i, -1)}>
+                    <Text style={styles.stepButtonText}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>{s.weight} lbs</Text>
+                  <TouchableOpacity style={styles.stepButton} onPress={() => nudgeWeight(i, 1)}>
+                    <Text style={styles.stepButtonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ))}
+
+          <TouchableOpacity style={styles.addSetButton} onPress={addSet}>
+            <Text style={styles.addSetText}>+ Add Set</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.saveButton} onPress={handleLog}>
             <Text style={styles.saveButtonText}>Log</Text>
@@ -263,35 +307,49 @@ function makeStyles(colors) {
     logForm: {
       marginTop: 12,
     },
-    stepperRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    setBlock: {
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      padding: 10,
       marginBottom: 8,
     },
-    stepperLabel: { color: colors.textSecondary, fontSize: 12, width: 44 },
+    setHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    setLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+    removeText: { color: colors.danger, fontSize: 11 },
+    setRow: { flexDirection: 'row', gap: 16 },
+    stepperGroup: { flexDirection: 'row', alignItems: 'center' },
+    stepperMiniLabel: { color: colors.textSecondary, fontSize: 11, width: 40 },
     stepButton: {
-      width: 28,
-      height: 28,
+      width: 26,
+      height: 26,
       borderRadius: 8,
       backgroundColor: colors.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    stepButtonText: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
+    stepButtonText: { color: colors.textPrimary, fontSize: 15, fontWeight: '700' },
     stepperValue: {
       color: colors.textPrimary,
       fontSize: 13,
-      width: 70,
+      width: 56,
       textAlign: 'center',
     },
-    perSetWrap: { marginTop: 2 },
+    addSetButton: {
+      alignSelf: 'flex-start',
+      marginBottom: 10,
+    },
+    addSetText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
     saveButton: {
       backgroundColor: colors.accent,
       borderRadius: 8,
       paddingHorizontal: 16,
       paddingVertical: 9,
       alignItems: 'center',
-      marginTop: 6,
     },
     saveButtonText: { color: '#0A0A0A', fontWeight: '700' },
   });

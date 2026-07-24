@@ -2,8 +2,10 @@
 
 What's working right now:
 - Day 1 checklist with your real leg-day exercises (edit `src/data/routines.js` for other days)
-- Tap the pencil icon on a card to log a session — Set 1's weight drives every other set until you
-  individually nudge one with its own −/+ buttons; reps has its own −/+ stepper (default 12)
+- Tap the pencil icon on a card to log a session. Set 1 drives every other set's weight *and*
+  reps until you individually nudge one — each set has its own −/+ for both. "+ Add Set" appends
+  an extra set beyond the exercise's default count (removable before you log); logging always
+  saves however many sets you ended up with
 - Warm-up/cooldown/mobility items are simple checkboxes instead of weight logging
 - All-time PR auto-updates when you log a heavier top set
 - "Last 2" rolling history per exercise (FIFO — 3rd entry pushes the oldest out, which gets sent
@@ -99,6 +101,74 @@ If you'd rather not rebuild every time you tweak a routine, I can add a simple i
 you paste/edit the routine JSON directly on the phone and it saves to local storage — no rebuild
 required. Let me know if you want that added.
 
+## Google Sheets sign-in setup
+
+Real Google sign-in requires native code, which means **Expo Go no longer works for this app** --
+you need a "development build" instead (a custom APK with the native module baked in, that you
+install once and reuse while developing). Here's the full path:
+
+### 1. Create the Google Cloud project + OAuth credentials
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com), create a new project (or
+   pick an existing one).
+2. **APIs & Services → Library** → search "Google Sheets API" → Enable it.
+3. **APIs & Services → OAuth consent screen** → set up as "External," fill in the required fields,
+   and leave publishing status as **Testing**. Under "Test users," add your own Google account
+   *and every friend's Google account* you want to be able to sign in -- while in Testing mode,
+   only allowlisted accounts can authenticate. (Publishing to "Production" removes this limit but
+   requires Google's verification review, not worth it yet.)
+4. **APIs & Services → Credentials → Create Credentials → OAuth client ID**:
+   - Create a **Web application** type client (name it anything, e.g. "Workout App Web"). You
+     won't redirect users through this one directly, but the Android sign-in library requires it
+     -- copy the Client ID it gives you.
+   - Create an **Android** type client: package name is `com.yourname.workoutcycle` (from
+     `app.json` -- change both to match if you rename it), and you'll need your app's SHA-1
+     certificate fingerprint. Get that by running this in your project folder once you're set up
+     with `eas-cli`:
+     ```powershell
+     eas credentials
+     ```
+     Pick Android → your build profile → "Keystore: Manage everything needed to build your project"
+     → it'll show the SHA-1. Paste that into the Android OAuth client.
+
+### 2. Drop the Web Client ID into the code
+
+Open `src/services/googleAuth.js` and replace:
+```js
+const WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+```
+with the Web application client ID from step 1.
+
+### 3. Build a development client (one-time, then reuse it)
+
+```powershell
+npm install
+npx expo install --fix
+eas build --platform android --profile development
+```
+Install that APK on your phone like any other. From now on, instead of `npx expo start` +
+Expo Go, run:
+```powershell
+npx expo start --dev-client
+```
+and open it from that custom app icon instead of Expo Go. Everything else about your workflow
+(editing files, hot reload) stays the same -- this only changes which app you scan the QR code
+into.
+
+### 4. Try it
+
+In the app: Settings → Google Sheets Sync → "Sign in with Google." Once signed in, paste your
+target spreadsheet's ID (from its URL, the string between `/d/` and `/edit`) and a range like
+`Sheet1!A1`, save, and sessions will append as rows once they roll off the 2-session local
+history.
+
+The manual webhook field is still there as a no-OAuth fallback if you ever want to skip all of
+this.
+
+For sharing a **regular test APK** with friends (no Sheets sign-in needed on their end), keep
+using the `preview` profile as before -- that one doesn't require them to be Google test users or
+do any setup.
+
 ## Editing Day 1's actual exercises
 
 Open `src/data/routines.js` and edit the first routine's `exercises` array. Each exercise:
@@ -115,9 +185,11 @@ Open `src/data/routines.js` and edit the first routine's `exercises` array. Each
 }
 ```
 
-## Wiring up the real Google Sheets export
+## Wiring up the manual webhook fallback
 
-In `src/storage/storage.js`, set `SHEETS_WEBHOOK_URL` to a Google Apps Script Web App URL
-that accepts a POST with JSON `{ routineName, exerciseId, exerciseName, date, weight, reps }`
-and appends a row to your sheet. The export already fires automatically whenever a 3rd session
-pushes the oldest one out, matching the spec's rolling-buffer diagram.
+If you'd rather skip Google sign-in entirely, go to Settings → Advanced: Manual Webhook and paste
+a Google Apps Script Web App URL that accepts a POST with JSON
+`{ routineName, exerciseId, exerciseName, date, weight, sets }` and appends a row to your sheet.
+This only gets used when you're not signed in with Google above. The export fires automatically
+whenever a 3rd session pushes the oldest one out of local history, matching the spec's
+rolling-buffer diagram.

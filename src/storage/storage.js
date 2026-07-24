@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTINES } from '../data/routines';
 import { SETTINGS_KEY } from '../constants/storageKeys';
+import { getFreshAccessToken } from '../services/googleAuth';
+import { appendRowToSheet } from '../services/googleSheets';
 
 const KEYS = {
   ROUTINE_INDEX: 'workout:routineIndex',
@@ -31,20 +33,32 @@ export async function setRoutineIndex(index) {
 
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
-// Returns the exercise merged with any locally-saved state (falls back to
-// the defaults defined in routines.js on first run).
+// A session's "sets" field is an array of { weight, reps } -- one entry
+// per set, independently editable. Returns the exercise merged with any
+// locally-saved state (falls back to the defaults in routines.js on first
+// run), migrating any older history shapes along the way.
 export async function getExerciseState(exercise) {
   const raw = await AsyncStorage.getItem(KEYS.EXERCISE_PREFIX + exercise.exerciseId);
   if (!raw) {
     return { ...exercise };
   }
   const saved = JSON.parse(raw);
-  // Migrate any history entries logged before the per-set schema existed
-  // (old shape was {date, weight, reps} instead of {date, reps, sets: []}).
-  const migratedHistory = (saved.history || []).map((h) =>
-    h.sets ? h : { ...h, sets: [h.weight || 0] }
-  );
+  const migratedHistory = (saved.history || []).map((h) => migrateHistoryEntry(h));
   return { ...exercise, ...saved, history: migratedHistory };
+}
+
+// Handles all three history shapes this app has used over time:
+//  1. newest:  { date, sets: [{ weight, reps }, ...] }
+//  2. middle:  { date, reps, sets: [weightNumber, ...] }
+//  3. oldest:  { date, weight, reps }
+function migrateHistoryEntry(h) {
+  if (Array.isArray(h.sets) && h.sets.length > 0 && typeof h.sets[0] === 'object') {
+    return h; // already current shape
+  }
+  if (Array.isArray(h.sets)) {
+    return { date: h.date, sets: h.sets.map((w) => ({ weight: w || 0, reps: h.reps || 12 })) };
+  }
+  return { date: h.date, sets: [{ weight: h.weight || 0, reps: h.reps || 12 }] };
 }
 
 export async function getExercisesForRoutine(routine) {
@@ -52,7 +66,8 @@ export async function getExercisesForRoutine(routine) {
 }
 
 // Logs a new session for a weighted (non-checkbox) exercise.
-// payload: { reps: number, sets: number[] }  -- one weight entry per set.
+// payload: { sets: [{ weight, reps }, ...] } -- one entry per set, in
+// whatever order/count the user ended up with (extra sets allowed).
 // Implements the 2-entry rolling FIFO queue described in the spec: when
 // history is already length 2, the oldest entry (index 0) is exported
 // before being dropped, then the new session is appended.
@@ -62,22 +77,22 @@ export async function logSession(exercise, payload) {
   }
 
   const current = await getExerciseState(exercise);
-  const { reps, sets } = payload;
-  const topWeight = Math.max(...sets);
-  const newEntry = { date: new Date().toISOString().slice(0, 10), reps, sets };
+  const { sets } = payload;
+  const topWeight = Math.max(...sets.map((s) => s.weight));
+  const newEntry = { date: new Date().toISOString().slice(0, 10), sets };
 
   let history = [...(current.history || [])];
 
   if (history.length === 2) {
     const dropped = history[0];
+    const droppedSets = dropped.sets || [];
     await exportSessionToSheets({
       routineName: exercise.routineName,
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.name,
       date: dropped.date,
-      reps: dropped.reps,
-      weight: Math.max(...(dropped.sets || [dropped.weight || 0])),
-      sets: dropped.sets || [dropped.weight || 0],
+      weight: droppedSets.length ? Math.max(...droppedSets.map((s) => s.weight)) : 0,
+      sets: droppedSets,
     });
     history = [history[1], newEntry];
   } else {
@@ -133,18 +148,43 @@ export async function resetCompletionForRoutine(routine) {
 }
 
 // ---------- Export pipeline ----------
-// The webhook URL is set from the Settings screen (Google Sheets section)
-// and stored alongside other preferences. The spec calls for: POST the
-// dropped week's {date, routineName, exerciseName, sets, reps, weight} to
-// Sheets, then wait for HTTP 200 before shifting locally. Until a URL is
-// set, this just logs the payload so nothing is silently lost.
+// Two paths, tried in order:
+//  1. Signed-in Google account (Settings > Google Sheets) -- writes directly
+//     via the Sheets API using the stored OAuth token.
+//  2. Manual webhook URL (Settings > advanced) -- unchanged from before,
+//     useful as a fallback or if you'd rather not set up OAuth at all.
 export async function exportSessionToSheets(payload) {
   const raw = await AsyncStorage.getItem(SETTINGS_KEY);
   const settings = raw ? JSON.parse(raw) : {};
-  const url = settings.sheetsWebhookUrl;
 
+  if (settings.googleSheetsSpreadsheetId) {
+    try {
+      const accessToken = await getFreshAccessToken();
+      if (accessToken) {
+        const range = settings.googleSheetsRange || 'Sheet1!A1';
+        const row = [
+          payload.date,
+          payload.routineName || '',
+          payload.exerciseName || '',
+          payload.weight,
+          (payload.sets || []).map((s) => `${s.weight}x${s.reps}`).join(', '),
+        ];
+        await appendRowToSheet({
+          accessToken,
+          spreadsheetId: settings.googleSheetsSpreadsheetId,
+          range,
+          values: row,
+        });
+        return { ok: true };
+      }
+    } catch (e) {
+      console.log('[Sheets export] Google Sheets API failed, falling back to webhook:', e.message);
+    }
+  }
+
+  const url = settings.sheetsWebhookUrl;
   if (!url) {
-    console.log('[export stub] no Sheets URL set in Settings yet, would POST:', payload);
+    console.log('[export stub] no Sheets connection set up yet, would send:', payload);
     return { ok: true, stub: true };
   }
   const res = await fetch(url, {

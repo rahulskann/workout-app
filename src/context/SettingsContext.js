@@ -5,7 +5,10 @@ import { SETTINGS_KEY } from '../constants/storageKeys';
 const defaultSettings = {
   themeMode: 'dark', // 'dark' | 'light'
   logFormMode: 'expand', // 'expand' | 'always'
-  sheetsWebhookUrl: '',
+  sheetsWebhookUrl: '', // manual fallback path
+  googleAccountEmail: '', // display only -- the actual token lives in SecureStore
+  googleSheetsSpreadsheetId: '',
+  googleSheetsRange: 'Sheet1!A1',
 };
 
 const SettingsContext = createContext({

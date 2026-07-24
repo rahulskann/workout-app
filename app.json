@@ -3,16 +3,25 @@
     "name": "5-Day Workout Cycle",
     "slug": "workout-cycle-app",
     "version": "1.0.0",
+    "scheme": "workoutcycleapp",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#121212",
     "android": {
-      "package": "com.yourname.workoutcycle",
+      "package": "com.rahulkannan.workoutcycle",
       "backgroundColor": "#121212"
     },
     "ios": {
-      "bundleIdentifier": "com.yourname.workoutcycle",
+      "bundleIdentifier": "com.rahulkannan.workoutcycle",
       "supportsTablet": false
+    },
+    "plugins": [
+      "@react-native-google-signin/google-signin"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3fe0beb4-f2d8-401e-8e08-fa7317da6b67"
+      }
     }
   }
 }
