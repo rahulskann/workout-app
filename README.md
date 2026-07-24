@@ -1,23 +1,30 @@
 # 5-Day Workout Cycle — Android MVP
 
 What's working right now:
-- Day 1 checklist with 5 placeholder exercises (edit `src/data/routines.js`)
-- Tap `+` on a card to log weight/reps for a session
-- All-time PR auto-updates when you log a heavier weight
-- "Last 2" rolling history per exercise (FIFO — 3rd entry pushes the oldest out)
-- When the oldest entry gets pushed out, it's sent to `exportSessionToSheets()` — currently a
-  console.log stub, ready to swap in a real Google Apps Script URL
-- "Finish Day" button appears once every exercise is logged, advances to Day 2 (currently empty —
-  add exercises to unlock it), wraps back to Day 1 after Day 5
-- Dark theme (#121212) matching the spec
-- Video modal component wired up (expo-av), just needs an actual `.mp4` per exercise — set
+- Day 1 checklist with your real leg-day exercises (edit `src/data/routines.js` for other days)
+- Tap the pencil icon on a card to log a session — Set 1's weight drives every other set until you
+  individually nudge one with its own −/+ buttons; reps has its own −/+ stepper (default 12)
+- Warm-up/cooldown/mobility items are simple checkboxes instead of weight logging
+- All-time PR auto-updates when you log a heavier top set
+- "Last 2" rolling history per exercise (FIFO — 3rd entry pushes the oldest out, which gets sent
+  to `exportSessionToSheets()`)
+- Tap any day in the row at the top to browse it — this only changes what's on screen, your
+  active day (the one "Finish Day" advances from) doesn't change until you tap "Set as Active Day"
+  and confirm. 5 days shows as a button row; once you pass 6 it collapses into a dropdown
+  (built with custom user-added days in mind)
+- "Finish Day" button appears once every exercise is logged, advances to the next day, wraps back
+  to Day 1 after Day 5
+- Settings screen (gear icon, top right): paste a Google Sheets webhook URL, toggle dark/light
+  theme, and choose whether the log form is always visible or hidden behind the pencil icon
+- Video modal component wired up (expo-video), just needs an actual `.mp4` per exercise — set
   `videoUri` in `routines.js`
 
-Not built yet (next steps, not needed to test tonight):
-- Real Google Sheets webhook (`SHEETS_WEBHOOK_URL` in `src/storage/storage.js`)
+Not built yet (next steps):
+- Real Google OAuth login for Sheets (current version is a manual webhook URL paste in Settings —
+  functional, just not a "Sign in with Google" flow)
 - PDF export via expo-print
 - "Clear Stored Data" button that also triggers a full export
-- Days 2–5 exercise lists
+- Days 2–5 exercise lists (bring your own, same schema as Day 1)
 
 ## Run it tonight (Android)
 
@@ -25,8 +32,12 @@ Not built yet (next steps, not needed to test tonight):
 2. On your computer, in this folder:
    ```
    npm install
+   npx expo install --fix
    npx expo start
    ```
+   The `expo install --fix` step re-aligns every dependency to the exact versions the SDK expects
+   — Expo Go rejects a project if any package is off, even by a patch version, so run this after
+   any `npm install`.
 3. Scan the QR code with the Expo Go app (Android: use the in-app "Scan QR code" button).
 
 That's it — no Android Studio or emulator needed for tonight. (You'll need Android Studio /

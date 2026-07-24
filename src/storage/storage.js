@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTINES } from '../data/routines';
+import { SETTINGS_KEY } from '../constants/storageKeys';
 
 const KEYS = {
   ROUTINE_INDEX: 'workout:routineIndex',
@@ -20,6 +21,14 @@ export async function advanceRoutine() {
   return next;
 }
 
+// Jumps directly to a chosen day (used by the day picker). Unlike
+// advanceRoutine, this doesn't reset completion state on other days --
+// each day's checklist tracks its own "completedToday" independently.
+export async function setRoutineIndex(index) {
+  await AsyncStorage.setItem(KEYS.ROUTINE_INDEX, String(index));
+  return index;
+}
+
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
 // Returns the exercise merged with any locally-saved state (falls back to
@@ -30,20 +39,32 @@ export async function getExerciseState(exercise) {
     return { ...exercise };
   }
   const saved = JSON.parse(raw);
-  return { ...exercise, ...saved };
+  // Migrate any history entries logged before the per-set schema existed
+  // (old shape was {date, weight, reps} instead of {date, reps, sets: []}).
+  const migratedHistory = (saved.history || []).map((h) =>
+    h.sets ? h : { ...h, sets: [h.weight || 0] }
+  );
+  return { ...exercise, ...saved, history: migratedHistory };
 }
 
 export async function getExercisesForRoutine(routine) {
   return Promise.all(routine.exercises.map((ex) => getExerciseState(ex)));
 }
 
-// Logs a new session for an exercise. Implements the 2-entry rolling FIFO
-// queue described in the spec: when history is already length 2, the
-// oldest entry (index 0) is exported before being dropped, then the new
-// session is appended.
-export async function logSession(exercise, { weight, reps }) {
+// Logs a new session for a weighted (non-checkbox) exercise.
+// payload: { reps: number, sets: number[] }  -- one weight entry per set.
+// Implements the 2-entry rolling FIFO queue described in the spec: when
+// history is already length 2, the oldest entry (index 0) is exported
+// before being dropped, then the new session is appended.
+export async function logSession(exercise, payload) {
+  if (exercise.logType === 'checkbox') {
+    return logCheckboxComplete(exercise);
+  }
+
   const current = await getExerciseState(exercise);
-  const newEntry = { date: new Date().toISOString().slice(0, 10), weight, reps };
+  const { reps, sets } = payload;
+  const topWeight = Math.max(...sets);
+  const newEntry = { date: new Date().toISOString().slice(0, 10), reps, sets };
 
   let history = [...(current.history || [])];
 
@@ -53,14 +74,17 @@ export async function logSession(exercise, { weight, reps }) {
       routineName: exercise.routineName,
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.name,
-      ...dropped,
+      date: dropped.date,
+      reps: dropped.reps,
+      weight: Math.max(...(dropped.sets || [dropped.weight || 0])),
+      sets: dropped.sets || [dropped.weight || 0],
     });
     history = [history[1], newEntry];
   } else {
     history.push(newEntry);
   }
 
-  const maxWeight = Math.max(current.maxWeight || 0, weight);
+  const maxWeight = Math.max(current.maxWeight || 0, topWeight);
 
   const updated = {
     ...current,
@@ -74,6 +98,22 @@ export async function logSession(exercise, { weight, reps }) {
     JSON.stringify({ history, maxWeight, completedToday: true })
   );
 
+  return updated;
+}
+
+// Checkbox-type exercises (warm-ups, cooldowns, mobility routines) just
+// need a "done today" toggle -- no weight/rep tracking.
+export async function logCheckboxComplete(exercise) {
+  const current = await getExerciseState(exercise);
+  const updated = { ...current, completedToday: true };
+  await AsyncStorage.setItem(
+    KEYS.EXERCISE_PREFIX + exercise.exerciseId,
+    JSON.stringify({
+      history: current.history || [],
+      maxWeight: current.maxWeight || 0,
+      completedToday: true,
+    })
+  );
   return updated;
 }
 
@@ -92,20 +132,22 @@ export async function resetCompletionForRoutine(routine) {
   );
 }
 
-// ---------- Export pipeline (stub) ----------
-// TODO: replace with a real Google Apps Script Web App URL or REST endpoint.
-// The spec calls for: POST the dropped week's {date, routineName, exerciseName,
-// sets, reps, weight} to Sheets, then wait for HTTP 200 before shifting locally.
-// For now this just logs the payload so nothing is silently lost while you
-// wire up the real endpoint.
-const SHEETS_WEBHOOK_URL = null; // e.g. 'https://script.google.com/macros/s/XXX/exec'
-
+// ---------- Export pipeline ----------
+// The webhook URL is set from the Settings screen (Google Sheets section)
+// and stored alongside other preferences. The spec calls for: POST the
+// dropped week's {date, routineName, exerciseName, sets, reps, weight} to
+// Sheets, then wait for HTTP 200 before shifting locally. Until a URL is
+// set, this just logs the payload so nothing is silently lost.
 export async function exportSessionToSheets(payload) {
-  if (!SHEETS_WEBHOOK_URL) {
-    console.log('[export stub] would POST to Google Sheets:', payload);
+  const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+  const settings = raw ? JSON.parse(raw) : {};
+  const url = settings.sheetsWebhookUrl;
+
+  if (!url) {
+    console.log('[export stub] no Sheets URL set in Settings yet, would POST:', payload);
     return { ok: true, stub: true };
   }
-  const res = await fetch(SHEETS_WEBHOOK_URL, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
