@@ -10,10 +10,12 @@ import {
   Platform,
   StatusBar as RNStatusBar,
   Alert,
+  Linking,
 } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
 import { getColors } from '../theme/colors';
-import { signInWithGoogle, signOutGoogle } from '../services/googleAuth';
+import { signInWithGoogle, signOutGoogle, getFreshAccessToken } from '../services/googleAuth';
+import { createWorkoutSpreadsheet } from '../services/googleSheets';
 
 export default function SettingsScreen({ onBack }) {
   const { settings, updateSettings } = useSettings();
@@ -21,16 +23,10 @@ export default function SettingsScreen({ onBack }) {
   const styles = makeStyles(colors);
 
   const [urlDraft, setUrlDraft] = useState(settings.sheetsWebhookUrl || '');
-  const [spreadsheetIdDraft, setSpreadsheetIdDraft] = useState(settings.googleSheetsSpreadsheetId || '');
-  const [rangeDraft, setRangeDraft] = useState(settings.googleSheetsRange || 'Sheet1!A1');
   const [signingIn, setSigningIn] = useState(false);
+  const [creatingSheet, setCreatingSheet] = useState(false);
 
   const saveUrl = () => updateSettings({ sheetsWebhookUrl: urlDraft.trim() });
-  const saveSpreadsheetSettings = () =>
-    updateSettings({
-      googleSheetsSpreadsheetId: spreadsheetIdDraft.trim(),
-      googleSheetsRange: (rangeDraft || 'Sheet1!A1').trim(),
-    });
 
   const handleSignIn = async () => {
     setSigningIn(true);
@@ -46,7 +42,36 @@ export default function SettingsScreen({ onBack }) {
 
   const handleSignOut = async () => {
     await signOutGoogle();
-    updateSettings({ googleAccountEmail: '' });
+    updateSettings({
+      googleAccountEmail: '',
+      googleSheetsSpreadsheetId: '',
+      googleSheetsSpreadsheetUrl: '',
+    });
+  };
+
+  const handleCreateSheet = async () => {
+    setCreatingSheet(true);
+    try {
+      const accessToken = await getFreshAccessToken();
+      if (!accessToken) throw new Error('Not signed in.');
+      const { spreadsheetId, spreadsheetUrl } = await createWorkoutSpreadsheet({ accessToken });
+      updateSettings({
+        googleSheetsSpreadsheetId: spreadsheetId,
+        googleSheetsSpreadsheetUrl: spreadsheetUrl || '',
+        googleSheetsRange: 'Sheet1!A1',
+      });
+    } catch (e) {
+      Alert.alert('Couldn\'t create sheet', e?.message || 'Something went wrong.');
+    } finally {
+      setCreatingSheet(false);
+    }
+  };
+
+  const handleOpenSheet = () => {
+    const url =
+      settings.googleSheetsSpreadsheetUrl ||
+      `https://docs.google.com/spreadsheets/d/${settings.googleSheetsSpreadsheetId}/edit`;
+    Linking.openURL(url);
   };
 
   return (
@@ -66,42 +91,46 @@ export default function SettingsScreen({ onBack }) {
           {settings.googleAccountEmail ? (
             <>
               <Text style={styles.statusText}>✓ Signed in as {settings.googleAccountEmail}</Text>
+              <Text style={styles.sectionSub}>
+                This app can only create and edit a spreadsheet it makes itself -- it can't see,
+                edit, or delete anything else in your Drive. Delete the sheet any time from
+                sheets.google.com whenever you want.
+              </Text>
               <TouchableOpacity style={styles.secondaryButton} onPress={handleSignOut}>
                 <Text style={styles.secondaryButtonText}>Sign Out</Text>
               </TouchableOpacity>
 
-              <Text style={[styles.sectionSub, { marginTop: 14 }]}>
-                Paste the ID from your spreadsheet's URL (the long string between /d/ and /edit),
-                and the sheet/range to append rows to.
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Spreadsheet ID"
-                placeholderTextColor={colors.textSecondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={spreadsheetIdDraft}
-                onChangeText={setSpreadsheetIdDraft}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Sheet1!A1"
-                placeholderTextColor={colors.textSecondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={rangeDraft}
-                onChangeText={setRangeDraft}
-              />
-              <TouchableOpacity style={styles.saveButton} onPress={saveSpreadsheetSettings}>
-                <Text style={styles.saveButtonText}>Save Spreadsheet</Text>
-              </TouchableOpacity>
+              {settings.googleSheetsSpreadsheetId ? (
+                <>
+                  <Text style={[styles.statusText, { marginTop: 14 }]}>✓ Sheet connected</Text>
+                  <TouchableOpacity style={styles.saveButton} onPress={handleOpenSheet}>
+                    <Text style={styles.saveButtonText}>Open in Google Sheets</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.secondaryButton} onPress={handleCreateSheet} disabled={creatingSheet}>
+                    <Text style={styles.secondaryButtonText}>
+                      {creatingSheet ? 'Creating…' : 'Create a New Sheet Instead'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.saveButton, { marginTop: 14 }]}
+                  onPress={handleCreateSheet}
+                  disabled={creatingSheet}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {creatingSheet ? 'Creating…' : 'Create Workout Sheet'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           ) : (
             <>
               <Text style={styles.sectionSub}>
-                Sign in to send sessions straight to a Google Sheet. Requires a development build
-                (not Expo Go) and you'll need to be added as a test user by the app's owner while
-                it's not yet published.
+                Sign in to create a workout log spreadsheet the app can write to -- it only ever
+                gets access to that one sheet, nothing else in your Drive. Requires a development
+                build (not Expo Go), and you'll need to be added as a test user by the app's owner
+                while it's not yet published.
               </Text>
               <TouchableOpacity
                 style={styles.saveButton}

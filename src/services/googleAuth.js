@@ -16,7 +16,13 @@ function ensureConfigured() {
   if (configured) return;
   GoogleSignin.configure({
     webClientId: WEB_CLIENT_ID,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    // drive.file is the narrow, "non-sensitive" scope: the app can only
+    // see/edit/create files it makes itself (or ones explicitly opened via
+    // a picker) -- not the rest of your Drive. That's why the sign-in flow
+    // creates its own spreadsheet rather than asking you to paste an
+    // existing one's ID; deleting the sheet is left entirely up to you via
+    // sheets.google.com.
+    scopes: ['https://www.googleapis.com/auth/drive.file'],
     offlineAccess: false,
   });
   configured = true;
