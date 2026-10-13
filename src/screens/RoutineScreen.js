@@ -1,15 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  Platform,
-  StatusBar as RNStatusBar,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ROUTINES } from '../data/routines';
 import {
   getRoutineIndex,
@@ -24,10 +15,11 @@ import DaySelectorBar from '../components/DaySelectorBar';
 import { useSettings } from '../context/SettingsContext';
 import { getColors } from '../theme/colors';
 
-export default function RoutineScreen({ onOpenSettings }) {
+export default function RoutineScreen({ navigation }) {
   const { settings } = useSettings();
   const colors = getColors(settings.themeMode);
   const styles = makeStyles(colors);
+  const insets = useSafeAreaInsets();
 
   // activeIndex = the persisted "current" day (what Finish Day advances from).
   // viewedIndex = whatever day is currently on screen -- browsing doesn't
@@ -104,13 +96,15 @@ export default function RoutineScreen({ onOpenSettings }) {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    // Bottom edge is left out on purpose: the list and the floating button add
+    // insets.bottom themselves so they clear the gesture bar.
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={{ flexShrink: 1 }}>
           <Text style={styles.headerTitle}>{viewedRoutine.name}</Text>
           {!isViewingActive && <Text style={styles.previewTag}>Previewing · not your active day</Text>}
         </View>
-        <TouchableOpacity style={styles.settingsButton} onPress={onOpenSettings}>
+        <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.settingsIcon}>⚙️</Text>
         </TouchableOpacity>
       </View>
@@ -127,7 +121,7 @@ export default function RoutineScreen({ onOpenSettings }) {
         {exercises.filter((e) => e.completedToday).length}/{exercises.length} logged
       </Text>
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: 100 + insets.bottom }]}>
         {exercises.length === 0 ? (
           <Text style={styles.empty}>
             No exercises added for this day yet. Edit src/data/routines.js to fill it in.
@@ -148,7 +142,11 @@ export default function RoutineScreen({ onOpenSettings }) {
         <>
           {isViewingActive ? (
             <TouchableOpacity
-              style={[styles.finishButton, !allDone && styles.finishButtonDisabled]}
+              style={[
+                styles.finishButton,
+                { bottom: 20 + insets.bottom },
+                !allDone && styles.finishButtonDisabled,
+              ]}
               disabled={!allDone}
               onPress={handleFinishDay}
             >
@@ -159,7 +157,10 @@ export default function RoutineScreen({ onOpenSettings }) {
               </Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.setActiveButton} onPress={handleSetActive}>
+            <TouchableOpacity
+              style={[styles.setActiveButton, { bottom: 20 + insets.bottom }]}
+              onPress={handleSetActive}
+            >
               <Text style={styles.setActiveText}>Set as Active Day</Text>
             </TouchableOpacity>
           )}
@@ -178,7 +179,7 @@ function makeStyles(colors) {
       alignItems: 'flex-start',
       justifyContent: 'space-between',
       paddingHorizontal: 20,
-      paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) + 16 : 20,
+      paddingTop: 16,
       paddingBottom: 4,
     },
     headerTitle: { color: colors.textPrimary, fontSize: 24, fontWeight: '700' },

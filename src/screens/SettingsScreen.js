@@ -5,19 +5,17 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
-  Platform,
-  StatusBar as RNStatusBar,
   Alert,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSettings } from '../context/SettingsContext';
 import { getColors } from '../theme/colors';
 import { signInWithGoogle, signOutGoogle, getFreshAccessToken } from '../services/googleAuth';
 import { createWorkoutSpreadsheet } from '../services/googleSheets';
 
-export default function SettingsScreen({ onBack }) {
+export default function SettingsScreen({ navigation }) {
   const { settings, updateSettings } = useSettings();
   const colors = getColors(settings.themeMode);
   const styles = makeStyles(colors);
@@ -78,7 +76,7 @@ export default function SettingsScreen({ onBack }) {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Text style={styles.backButtonText}>‹ Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Settings</Text>
@@ -234,7 +232,7 @@ function makeStyles(colors) {
       flexDirection: 'row',
       alignItems: 'center',
       marginBottom: 24,
-      paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) + 8 : 8,
+      paddingTop: 8,
     },
     backButton: { marginRight: 12 },
     backButtonText: { color: colors.accent, fontSize: 16, fontWeight: '600' },
