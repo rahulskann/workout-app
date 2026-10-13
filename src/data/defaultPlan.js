@@ -5,6 +5,10 @@ import { ROUTINES } from './routines';
 // existed attach to it automatically.
 export const DEFAULT_PLAN_ID = 'default-5-day-cycle';
 
+// How an exercise is logged: weight x reps per set, a single tick, or a
+// stopwatch per set.
+export const LOG_TYPES = ['weights', 'checkbox', 'timed'];
+
 export function makeDefaultPlan() {
   return {
     id: DEFAULT_PLAN_ID,
@@ -17,7 +21,7 @@ export function makeDefaultPlan() {
         name: ex.name,
         targetGroup: ex.targetGroup,
         targetSets: ex.targetSets,
-        logType: ex.logType === 'checkbox' ? 'checkbox' : 'weights',
+        logType: LOG_TYPES.includes(ex.logType) ? ex.logType : 'weights',
         videoUri: ex.videoUri || null,
         videoUrl: ex.videoUrl || null,
       })),

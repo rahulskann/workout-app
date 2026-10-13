@@ -1,5 +1,6 @@
 import { newId } from './plans';
 import { parseYouTubeUrl } from '../services/youtube';
+import { LOG_TYPES } from '../data/defaultPlan';
 
 // The two kinds of file the app writes and reads (the file I/O itself is in
 // services/transfer.js):
@@ -65,7 +66,7 @@ export function planFromShareFile(data, existingNames = []) {
 }
 
 function importedExercise(ex) {
-  const logType = ex.logType === 'checkbox' ? 'checkbox' : 'weights';
+  const logType = LOG_TYPES.includes(ex.logType) ? ex.logType : 'weights';
   const sets = Number.isInteger(ex.targetSets) ? Math.min(Math.max(ex.targetSets, 1), MAX_SETS) : 3;
   const videoUrl = typeof ex.videoUrl === 'string' && parseYouTubeUrl(ex.videoUrl) ? ex.videoUrl.trim() : null;
   return {

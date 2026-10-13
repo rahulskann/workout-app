@@ -41,6 +41,18 @@ const COMMON_GROUPS = [
 ];
 const MAX_SETS = 10;
 
+const LOG_TYPE_CHOICES = [
+  { type: 'weights', label: 'Weight & reps' },
+  { type: 'checkbox', label: 'Checkbox' },
+  { type: 'timed', label: 'Timed' },
+];
+
+const LOG_TYPE_HINTS = {
+  weights: 'Log weight and reps for each set. Use 0 lbs for bodyweight moves.',
+  checkbox: 'Just tick it off: good for warm-ups, stretches and mobility.',
+  timed: 'A stopwatch for each set: tap Start, then Stop when you finish. Good for planks, hangs and holds; your longest time is tracked like a PR.',
+};
+
 function confirmLargeVideo(sizeMb) {
   const size = sizeMb >= 1024 ? `${(sizeMb / 1024).toFixed(1)} GB` : `${sizeMb} MB`;
   return new Promise((resolve) =>
@@ -160,24 +172,17 @@ export default function ExerciseEditorScreen({ navigation, route }) {
 
         <Text style={styles.label}>How it's logged</Text>
         <View style={local.toggleRow}>
-          <Choice
-            local={local}
-            label="Weights & reps"
-            active={!isCheckbox}
-            onPress={() => set({ logType: 'weights' })}
-          />
-          <Choice
-            local={local}
-            label="Checkbox"
-            active={isCheckbox}
-            onPress={() => set({ logType: 'checkbox' })}
-          />
+          {LOG_TYPE_CHOICES.map(({ type, label }) => (
+            <Choice
+              key={type}
+              local={local}
+              label={label}
+              active={(form.logType || 'weights') === type}
+              onPress={() => set({ logType: type })}
+            />
+          ))}
         </View>
-        <Text style={styles.hint}>
-          {isCheckbox
-            ? 'Just tick it off: good for warm-ups, stretches, mobility and timed holds.'
-            : 'Log weight and reps for each set. Use 0 lbs for bodyweight moves.'}
-        </Text>
+        <Text style={styles.hint}>{LOG_TYPE_HINTS[form.logType] || LOG_TYPE_HINTS.weights}</Text>
 
         {!isCheckbox && (
           <>
@@ -358,6 +363,8 @@ function makeStyles(colors) {
     choice: {
       flex: 1,
       paddingVertical: 11,
+      paddingHorizontal: 6,
+      justifyContent: 'center',
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.cardBorder,
@@ -365,7 +372,7 @@ function makeStyles(colors) {
       alignItems: 'center',
     },
     choiceActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
-    choiceText: { color: colors.textSecondary, fontWeight: '600' },
+    choiceText: { color: colors.textSecondary, fontWeight: '600', textAlign: 'center' },
     choiceTextActive: { color: colors.accent },
     stepper: { flexDirection: 'row', alignItems: 'center' },
     stepButton: {

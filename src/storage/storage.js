@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_KEY } from '../constants/storageKeys';
 import { getFreshAccessToken } from '../services/googleAuth';
 import { appendRowToSheet } from '../services/googleSheets';
+import { formatDuration } from '../utils/time';
 
 // Which day of the cycle you're on lives with the plans (storage/plans.js);
 // this file only tracks per-exercise history and the Sheets export queue.
@@ -12,11 +13,13 @@ const KEYS = {
 
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
-// Saved per exercise: { history, maxWeight, today }.
-//  - history: up to 2 finished sessions, each { date, sets: [{ weight, reps }] }
+// Saved per exercise: { history, maxWeight, maxSeconds, today }.
+//  - history: up to 2 finished sessions, each { date, sets }, where sets are
+//      [{ weight, reps }] for weighted exercises and [{ seconds }] for timed
+//  - maxWeight / maxSeconds: the PR -- heaviest set, or longest timed set
 //  - today: what was ticked or logged during one visit of its day --
 //      { visitId } for checkbox exercises, or
-//      { visitId, date, sets, routineName } for weighted ones.
+//      { visitId, date, sets, routineName } for weighted and timed ones.
 // Today's sets are a draft you can edit or undo while the day is active. They
 // only move into history (and the Sheets queue) once that visit ends -- see
 // commitDrafts -- so an undo never leaves a stray row in the sheet.
@@ -37,15 +40,16 @@ function parseExerciseState(exercise, saved, visitId) {
     ...exercise,
     history: (saved.history || []).map((h) => migrateHistoryEntry(h)),
     maxWeight: saved.maxWeight || 0,
+    maxSeconds: saved.maxSeconds || 0,
     today: saved.today || null,
     completedToday: visitId != null && saved.today?.visitId === visitId,
   };
 }
 
-async function saveExerciseState(exerciseId, { history, maxWeight, today }) {
+async function saveExerciseState(exerciseId, { history, maxWeight, maxSeconds, today }) {
   await AsyncStorage.setItem(
     KEYS.EXERCISE_PREFIX + exerciseId,
-    JSON.stringify({ history, maxWeight, today })
+    JSON.stringify({ history, maxWeight, maxSeconds: maxSeconds || 0, today })
   );
 }
 
@@ -89,11 +93,12 @@ export async function getExercisesForRoutine(routine, visitId = null) {
   return Promise.all(routine.exercises.map((ex) => getExerciseState(ex, visitId)));
 }
 
-// Logs (or re-logs) today's sets for a weighted exercise during visitId, the
-// active day's current visit (see storage/plans.js). payload:
-// { sets: [{ weight, reps }, ...] } -- one entry per set, in whatever
-// order/count the user ended up with (extra sets allowed). Logging again
-// during the same visit replaces the earlier numbers.
+// Logs (or re-logs) today's sets for a weighted or timed exercise during
+// visitId, the active day's current visit (see storage/plans.js). payload:
+// { sets: [{ weight, reps }, ...] } or, for timed, { sets: [{ seconds }, ...] }
+// -- one entry per set, in whatever order/count the user ended up with (extra
+// sets allowed). Logging again during the same visit replaces the earlier
+// numbers.
 export async function logSession(exercise, payload, visitId) {
   if (exercise.logType === 'checkbox') {
     return logCheckboxComplete(exercise, visitId);
@@ -162,8 +167,9 @@ export async function commitDrafts(exercises, keepVisitId) {
 // returned as an export payload (the queue keeps it until Sheets confirms).
 function finishDraft(state) {
   const { today } = state;
+  const kept = { history: state.history, maxWeight: state.maxWeight, maxSeconds: state.maxSeconds };
   if (!today?.sets?.length) {
-    return { next: { history: state.history, maxWeight: state.maxWeight, today: null }, dropped: null };
+    return { next: { ...kept, today: null }, dropped: null };
   }
   const entry = { date: today.date, sets: today.sets };
   let history = [...state.history];
@@ -174,22 +180,44 @@ function finishDraft(state) {
   } else {
     history.push(entry);
   }
-  const maxWeight = Math.max(state.maxWeight, ...today.sets.map((s) => s.weight));
   return {
-    next: { history, maxWeight, today: null },
+    next: {
+      history,
+      maxWeight: Math.max(kept.maxWeight || 0, ...numbers(today.sets, 'weight')),
+      maxSeconds: Math.max(kept.maxSeconds || 0, ...numbers(today.sets, 'seconds')),
+      today: null,
+    },
     dropped: droppedEntry && toExportPayload(state, droppedEntry, today.routineName),
   };
 }
 
+// The numeric values of one field across a session's sets (weight for
+// weighted sets, seconds for timed ones), skipping sets that don't have it.
+function numbers(sets, field) {
+  return sets.map((s) => s[field]).filter((v) => typeof v === 'number');
+}
+
+function isTimedSession(sets) {
+  return sets.length > 0 && sets.every((s) => typeof s.seconds === 'number');
+}
+
+// One set as it reads in the sheet: "135x8" or, for a timed set, "1:30".
+export function formatSetForSheet(s) {
+  return typeof s.seconds === 'number' ? formatDuration(s.seconds) : `${s.weight}x${s.reps}`;
+}
+
 function toExportPayload(exercise, entry, routineName) {
   const sets = entry.sets || [];
+  const timed = isTimedSession(sets);
+  const best = Math.max(0, ...numbers(sets, timed ? 'seconds' : 'weight'));
   return {
     id: `${exercise.exerciseId}:${entry.date}:${Date.now()}`,
     routineName,
     exerciseId: exercise.exerciseId,
     exerciseName: exercise.name,
     date: entry.date,
-    weight: sets.length ? Math.max(...sets.map((s) => s.weight)) : 0,
+    // The sheet's "Top Weight" column holds the longest time for timed exercises.
+    weight: timed ? formatDuration(best) : best,
     sets,
   };
 }
@@ -222,7 +250,7 @@ export async function exportSessionToSheets(payload) {
           payload.routineName || '',
           payload.exerciseName || '',
           payload.weight,
-          (payload.sets || []).map((s) => `${s.weight}x${s.reps}`).join(', '),
+          (payload.sets || []).map(formatSetForSheet).join(', '),
         ];
         await appendRowToSheet({
           accessToken,

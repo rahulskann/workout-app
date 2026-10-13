@@ -14,6 +14,7 @@ export function describeExercise(ex) {
   if (ex.targetGroup) parts.push(ex.targetGroup);
   if (ex.logType === 'checkbox') parts.push('checkbox');
   else parts.push(`${ex.targetSets} ${ex.targetSets === 1 ? 'set' : 'sets'}`);
+  if (ex.logType === 'timed') parts.push('timed');
   return parts.join(' · ');
 }
 

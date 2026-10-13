@@ -148,12 +148,21 @@ describe('default plan', () => {
     expect(withLinks.every((e) => e.logType === 'checkbox')).toBe(true);
   });
 
-  it('marks every exercise as either weights or checkbox', () => {
+  it('marks every exercise as weights, checkbox or timed', () => {
     const types = new Set(
       makeDefaultPlan().days.flatMap((d) => d.exercises.map((e) => e.logType))
     );
 
-    expect([...types].sort()).toEqual(['checkbox', 'weights']);
+    expect([...types].sort()).toEqual(['checkbox', 'timed', 'weights']);
+  });
+
+  it('times the planks and dead hangs', () => {
+    const timed = makeDefaultPlan()
+      .days.flatMap((d) => d.exercises)
+      .filter((e) => e.logType === 'timed')
+      .map((e) => e.name);
+
+    expect(timed.sort()).toEqual(['Dead hang', 'Dead hang', 'Plank', 'Plank', 'Plank', 'Side Plank']);
   });
 });
 

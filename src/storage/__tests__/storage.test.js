@@ -9,6 +9,7 @@ import {
   getAllExerciseStates,
   replaceAllExerciseStates,
   replacePendingExports,
+  formatSetForSheet,
 } from '../storage';
 import { SETTINGS_KEY } from '../../constants/storageKeys';
 
@@ -239,5 +240,50 @@ describe('backup and restore', () => {
     await replacePendingExports([{ id: 'a' }, { id: 'b' }]);
 
     expect(await getPendingExports()).toEqual([{ id: 'a' }, { id: 'b' }]);
+  });
+});
+
+describe('timed exercises', () => {
+  const plank = { exerciseId: 'plank', name: 'Plank', logType: 'timed', targetSets: 2, routineName: 'Day 2' };
+  const holds = (...secs) => secs.map((seconds) => ({ seconds }));
+
+  it('logs times as a draft and tracks the longest hold as the PR', async () => {
+    await logSession(plank, { sets: holds(45, 60) }, 'v1');
+    expect((await getExerciseState(plank, 'v1')).completedToday).toBe(true);
+
+    await commitDrafts([plank], 'v2');
+
+    const state = await getExerciseState(plank);
+    expect(state.history.map((h) => h.sets)).toEqual([holds(45, 60)]);
+    expect(state.maxSeconds).toBe(60);
+    expect(state.maxWeight).toBe(0);
+  });
+
+  it('keeps the best time when a later session is shorter', async () => {
+    await logSession(plank, { sets: holds(90) }, 'v1');
+    await commitDrafts([plank], 'v2');
+    await logSession(plank, { sets: holds(30) }, 'v2');
+    await commitDrafts([plank], 'v3');
+
+    expect((await getExerciseState(plank)).maxSeconds).toBe(90);
+  });
+
+  it('sends times to the sheet as m:ss', async () => {
+    global.fetch.mockResolvedValue({ ok: true });
+    await useWebhook();
+    for (const [i, secs] of [[1, 45], [2, 60], [3, 75]]) {
+      await logSession(plank, { sets: holds(secs, secs + 5) }, `t${i}`);
+      await commitDrafts([plank], `t${i}-next`);
+    }
+    await flushPendingExports();
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.weight).toBe('0:50');
+    expect(body.sets.map(formatSetForSheet)).toEqual(['0:45', '0:50']);
+  });
+
+  it('formats weighted sets for the sheet as before', () => {
+    expect(formatSetForSheet({ weight: 135, reps: 8 })).toBe('135x8');
+    expect(formatSetForSheet({ seconds: 95 })).toBe('1:35');
   });
 });

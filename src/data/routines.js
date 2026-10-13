@@ -5,8 +5,8 @@
 // withDefaultVideoLinks in storage/plans.js).
 // Each exercise needs a unique exerciseId (used as the storage key), so the
 // same exercise on two days gets a suffix like _day3.
-// logType: 'checkbox' = just tick it off (warm-ups, mobility, holds); anything
-// else logs weight x reps per set.
+// logType: 'checkbox' = just tick it off (warm-ups, mobility); 'timed' = a
+// stopwatch per set (planks, hangs); anything else logs weight x reps per set.
 // videoUrl: a default YouTube video for the exercise.
 // maxWeight is the starting all-time PR (set to 0 if unknown).
 // history starts empty - it fills in as you log sessions (max 2 entries, FIFO).
@@ -228,7 +228,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
-        logType: 'checkbox',
+        logType: 'timed',
         history: [],
       },
       {
@@ -248,7 +248,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
-        logType: 'checkbox',
+        logType: 'timed',
         history: [],
       },
       {
@@ -349,7 +349,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
-        logType: 'checkbox',
+        logType: 'timed',
         history: [],
       },
       {
@@ -369,7 +369,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
-        logType: 'checkbox',
+        logType: 'timed',
         history: [],
       },
       {
@@ -611,7 +611,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
-        logType: 'checkbox',
+        logType: 'timed',
         history: [],
       },
       {
@@ -621,7 +621,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
-        logType: 'checkbox',
+        logType: 'timed',
         history: [],
       },
       {

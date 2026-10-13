@@ -91,11 +91,13 @@ describe('shared plans', () => {
       { name: '', targetSets: 3 },
       { targetSets: 3 },
       { name: 'Curl', targetSets: 'three', logType: 'something' },
+      { name: 'Plank', targetSets: 2, logType: 'timed' },
     ];
 
-    const [squat, hold, curl, ...rest] = planFromShareFile(file).days[0].exercises;
+    const [squat, hold, curl, plank, ...rest] = planFromShareFile(file).days[0].exercises;
 
     expect(rest).toEqual([]);
+    expect(plank).toMatchObject({ targetSets: 2, logType: 'timed' });
     expect(squat).toMatchObject({ name: 'Squat', targetSets: 10, videoUrl: null });
     expect(hold).toMatchObject({ targetSets: 5, logType: 'checkbox' });
     expect(curl).toMatchObject({ targetSets: 3, logType: 'weights' });
