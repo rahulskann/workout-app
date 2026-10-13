@@ -3,7 +3,7 @@ const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 // Creates a new spreadsheet owned by the signed-in user, with a header row.
 // Under drive.file scope this is the only way to get write access to a
 // sheet -- the app can't touch spreadsheets it didn't create itself.
-export async function createWorkoutSpreadsheet({ accessToken, title = 'Workout Cycle Log' }) {
+export async function createWorkoutSpreadsheet({ accessToken, title = 'SplitCycle Log' }) {
   const createRes = await fetch(SHEETS_API_BASE, {
     method: 'POST',
     headers: {

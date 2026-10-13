@@ -49,5 +49,5 @@ it('embeds with the app as origin so YouTube agrees to play it', () => {
 
   expect(html).toContain(`https://www.youtube.com/embed/${ID}?`);
   expect(html).toContain('start=30');
-  expect(html).toContain('origin=https%3A%2F%2Fcom.rahulkannan.workoutcycle');
+  expect(html).toContain('origin=https%3A%2F%2Fcom.rahulkannan.splitcycle');
 });

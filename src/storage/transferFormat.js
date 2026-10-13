@@ -11,7 +11,9 @@ import { LOG_TYPES } from '../data/defaultPlan';
 //    rows, settings, photos), for moving to a new phone. Recorded video files
 //    are left out; they're far too big for a file you email around.
 
-export const FILE_APP = 'workout-cycle';
+export const FILE_APP = 'splitcycle';
+// Files made before the app was renamed (its backups and shared plans) still open.
+const ACCEPTED_FILE_APPS = [FILE_APP, 'workout-cycle'];
 export const FORMAT_VERSION = 1;
 const MAX_SETS = 10;
 const MAX_TEXT = 120;
@@ -174,7 +176,7 @@ export function isSafeFileName(name) {
 // ---------- Shared ----------
 
 function checkHeader(data, kind) {
-  if (!data || typeof data !== 'object' || data.app !== FILE_APP) {
+  if (!data || typeof data !== 'object' || !ACCEPTED_FILE_APPS.includes(data.app)) {
     throw new TransferError("That file isn't a plan or backup from this app.");
   }
   if (data.kind !== kind) {

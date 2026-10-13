@@ -1,195 +1,116 @@
-# 5-Day Workout Cycle — Android MVP
+# SplitCycle
 
-What's working right now:
-- Day 1 checklist with your real leg-day exercises (edit `src/data/routines.js` for other days)
-- Tap the pencil icon on a card to log a session. Set 1 drives every other set's weight *and*
-  reps until you individually nudge one — each set has its own −/+ for both. "+ Add Set" appends
-  an extra set beyond the exercise's default count (removable before you log); logging always
-  saves however many sets you ended up with
-- Warm-up/cooldown/mobility items are simple checkboxes instead of weight logging
-- All-time PR auto-updates when you log a heavier top set
-- "Last 2" rolling history per exercise (FIFO — 3rd entry pushes the oldest out, which gets sent
-  to `exportSessionToSheets()`)
-- Tap any day in the row at the top to browse it — this only changes what's on screen, your
-  active day (the one "Finish Day" advances from) doesn't change until you tap "Set as Active Day"
-  and confirm. 5 days shows as a button row; once you pass 6 it collapses into a dropdown
-  (built with custom user-added days in mind)
-- "Finish Day" button appears once every exercise is logged, advances to the next day, wraps back
-  to Day 1 after Day 5
-- Settings screen (gear icon, top right): paste a Google Sheets webhook URL, toggle dark/light
-  theme, and choose whether the log form is always visible or hidden behind the pencil icon
-- Video modal component wired up (expo-video), just needs an actual `.mp4` per exercise — set
-  `videoUri` in `routines.js`
+An Android app (Expo / React Native) for following a workout split that cycles through its days:
+open it at the gym, it shows today's exercises, you log them, tap **Finish Day**, and next time it's
+on the next day. Everything is stored on the phone and works offline.
 
-Not built yet (next steps):
-- Real Google OAuth login for Sheets (current version is a manual webhook URL paste in Settings —
-  functional, just not a "Sign in with Google" flow)
-- PDF export via expo-print
-- "Clear Stored Data" button that also triggers a full export
-- Days 2–5 exercise lists (bring your own, same schema as Day 1)
+- **Plans:** start from the built-in 5-Day Cycle or from scratch, keep several plans, and edit
+  days and exercises in the app (Settings → Plans).
+- **Three ways to log an exercise:** weight × reps per set, a checkbox (warm-ups, mobility), or a
+  stopwatch per set (planks, hangs). The last two sessions and your PR show on each card.
+- **Today's log stays editable** until you finish the day: untick a box, reopen an exercise to
+  change it, or undo it.
+- **Media:** a photo of the machine, a recorded video, and/or a YouTube link per exercise. The
+  warm-ups, cool-downs, stretches and mobility drills in the 5-Day Cycle come with YouTube videos.
+- **Google Sheets:** finished sessions that roll out of the two-session history are appended to a
+  spreadsheet. Anything that can't be sent (offline, not signed in) waits in a queue and retries.
+- **Sharing and backups:** share a plan as a file someone can import, or back up everything to
+  restore on a new phone.
 
-## Run it tonight (Android)
+The original design spec is `workout_app_summary.pdf` (kept outside the repo).
 
-1. Install [Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent) on your Android phone.
-2. On your computer, in this folder:
-   ```
-   npm install
-   npx expo install --fix
-   npx expo start
-   ```
-   The `expo install --fix` step re-aligns every dependency to the exact versions the SDK expects
-   — Expo Go rejects a project if any package is off, even by a patch version, so run this after
-   any `npm install`.
-3. Scan the QR code with the Expo Go app (Android: use the in-app "Scan QR code" button).
+## Running it on your phone
 
-That's it — no Android Studio or emulator needed for tonight. (You'll need Android Studio /
-a dev build later once you add MMKV or other native-only modules, but AsyncStorage works fine
-in Expo Go.)
+Builds are local, like `flutter run`: plug the phone in with USB debugging on.
 
-## Building a real .apk to sideload (no Expo Go needed)
+One-time setup on Windows: install Android Studio (it brings the Android SDK and a Java 17+
+runtime), then point `JAVA_HOME` at Android Studio's Java, since an older Java on the `PATH`
+won't work:
 
-VS Code doesn't compile anything itself — you need either Expo's cloud build service (EAS) or a
-local Android SDK + Gradle. EAS is the fast path and needs nothing installed beyond Node.
-
-### Option A — EAS Build (recommended, ~10–15 min, no Android Studio)
-
-1. Create a free account at [expo.dev](https://expo.dev).
-2. In this project folder:
-   ```
-   npm install -g eas-cli
-   eas login
-   eas build:configure
-   ```
-   (this will detect the `eas.json` already included here — keep the existing "preview" profile,
-   which is set to output a `.apk` instead of the store-only `.aab` format)
-3. Kick off the build:
-   ```
-   eas build --platform android --profile preview
-   ```
-4. Wait for it to finish in Expo's cloud (you'll get a live log link). When done, you get a
-   download link — grab the `.apk` from there.
-5. Transfer the `.apk` to your phone (email, Drive, USB, whatever) and tap it to install. You may
-   need to allow "install from unknown sources" the first time.
-
-### Option B — Fully local build with Android Studio
-
-Only do this if you want zero cloud dependency or plan to add native modules later (like MMKV).
-
-1. Install [Android Studio](https://developer.android.com/studio), open it once so it installs the
-   SDK, and install a JDK 17 (Android Studio can do this for you in Settings → SDK).
-2. Generate the native Android project:
-   ```
-   npx expo prebuild --platform android
-   ```
-3. Build the APK:
-   ```
-   cd android
-   ./gradlew assembleRelease
-   ```
-   (use `assembleDebug` instead if release signing isn't set up yet — a debug APK still installs
-   and runs fine for testing)
-4. The APK lands at `android/app/build/outputs/apk/release/app-release.apk` (or `debug/` for the
-   debug variant).
-
-### Swapping the routine after you have an APK
-
-Right now, routine data lives in `src/data/routines.js` and gets bundled into the app at build
-time — so changing it means editing that file and rerunning the build step above. For EAS this is
-just rerunning `eas build ... --profile preview` (~10 min), no reinstalling of tools needed.
-
-If you'd rather not rebuild every time you tweak a routine, I can add a simple in-app screen where
-you paste/edit the routine JSON directly on the phone and it saves to local storage — no rebuild
-required. Let me know if you want that added.
-
-## Google Sheets sign-in setup
-
-Real Google sign-in requires native code, which means **Expo Go no longer works for this app** --
-you need a "development build" instead (a custom APK with the native module baked in, that you
-install once and reuse while developing). Here's the full path:
-
-### 1. Create the Google Cloud project + OAuth credentials
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com), create a new project (or
-   pick an existing one).
-2. **APIs & Services → Library** → search "Google Sheets API" → Enable it.
-3. **APIs & Services → OAuth consent screen** → set up as "External," fill in the required fields,
-   and leave publishing status as **Testing**. Under "Test users," add your own Google account
-   *and every friend's Google account* you want to be able to sign in -- while in Testing mode,
-   only allowlisted accounts can authenticate. (Publishing to "Production" removes this limit but
-   requires Google's verification review, not worth it yet.)
-4. **APIs & Services → Credentials → Create Credentials → OAuth client ID**:
-   - Create a **Web application** type client (name it anything, e.g. "Workout App Web"). You
-     won't redirect users through this one directly, but the Android sign-in library requires it
-     -- copy the Client ID it gives you.
-   - Create an **Android** type client: package name is `com.yourname.workoutcycle` (from
-     `app.json` -- change both to match if you rename it), and you'll need your app's SHA-1
-     certificate fingerprint. Get that by running this in your project folder once you're set up
-     with `eas-cli`:
-     ```powershell
-     eas credentials
-     ```
-     Pick Android → your build profile → "Keystore: Manage everything needed to build your project"
-     → it'll show the SHA-1. Paste that into the Android OAuth client.
-
-### 2. Drop the Web Client ID into the code
-
-Open `src/services/googleAuth.js` and replace:
-```js
-const WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+```powershell
+[Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Android\Android Studio\jbr", "User")
 ```
-with the Web application client ID from step 1.
 
-### 3. Build a development client (one-time, then reuse it)
+Then, in this folder:
 
 ```powershell
 npm install
-npx expo install --fix
-eas build --platform android --profile development
+npm run android
 ```
-Install that APK on your phone like any other. From now on, instead of `npx expo start` +
-Expo Go, run:
+
+`npm run android` builds the app, installs it on the phone, opens it and starts the dev server, so
+code changes appear on the phone straight away. The first build takes a few minutes; later ones
+only rebuild what changed. A full rebuild is only needed after adding or upgrading a package with
+native code. If Google Play Protect asks to scan the app during install, answer it on the phone
+or the install waits.
+
+Run the tests with `npm test`.
+
+The app was called "5-Day Workout Cycle" (package `com.rahulkannan.workoutcycle`) before it was
+renamed. Backups and shared plans from that version still open in SplitCycle. The Expo project
+slug is still `workout-cycle-app`, since it ties the app to its existing expo.dev project.
+
+## Building an APK to share
+
+For an APK family can install without a computer, use Expo's build service (needs a free
+[expo.dev](https://expo.dev) account):
+
 ```powershell
-npx expo start --dev-client
-```
-and open it from that custom app icon instead of Expo Go. Everything else about your workflow
-(editing files, hot reload) stays the same -- this only changes which app you scan the QR code
-into.
-
-### 4. Try it
-
-In the app: Settings → Google Sheets Sync → "Sign in with Google." Once signed in, paste your
-target spreadsheet's ID (from its URL, the string between `/d/` and `/edit`) and a range like
-`Sheet1!A1`, save, and sessions will append as rows once they roll off the 2-session local
-history.
-
-The manual webhook field is still there as a no-OAuth fallback if you ever want to skip all of
-this.
-
-For sharing a **regular test APK** with friends (no Sheets sign-in needed on their end), keep
-using the `preview` profile as before -- that one doesn't require them to be Google test users or
-do any setup.
-
-## Editing Day 1's actual exercises
-
-Open `src/data/routines.js` and edit the first routine's `exercises` array. Each exercise:
-
-```js
-{
-  exerciseId: 'unique_snake_case_id',  // storage key, must be unique
-  name: 'Display Name',
-  targetGroup: 'Chest',
-  targetSets: 3,
-  maxWeight: 0,        // starting PR, 0 if unknown
-  videoUri: null,       // require('../../assets/videos/x.mp4') once you have clips
-  history: [],          // leave empty, fills in automatically
-}
+npm install -g eas-cli
+eas login
+eas build --platform android --profile preview
 ```
 
-## Wiring up the manual webhook fallback
+It gives a download link to an `.apk`. On the phone, allow installs from that source the first
+time. For Google sign-in to work in that APK, its signing key needs registering too (below).
 
-If you'd rather skip Google sign-in entirely, go to Settings → Advanced: Manual Webhook and paste
-a Google Apps Script Web App URL that accepts a POST with JSON
-`{ routineName, exerciseId, exerciseName, date, weight, sets }` and appends a row to your sheet.
-This only gets used when you're not signed in with Google above. The export fires automatically
-whenever a 3rd session pushes the oldest one out of local history, matching the spec's
-rolling-buffer diagram.
+## Google sign-in setup
+
+Signing in lets the app create its own workout spreadsheet and write to it. It asks only for the
+`drive.file` permission, which covers files the app creates and nothing else in your Drive.
+
+Everything here is in [Google Cloud Console](https://console.cloud.google.com), in the project
+that owns the Web client ID in `src/services/googleAuth.js`.
+
+1. **APIs & Services → Library:** make sure **Google Sheets API** is enabled.
+2. **Google Auth Platform → Audience:** leave the app in **Testing** and add every Google account
+   that should be able to sign in (yours and your family's) under **Test users**. Up to 100.
+3. **Google Auth Platform → Clients:** keep the existing **Web application** client (that's the
+   ID in the code). Add one **Android** client per signing key the app is built with, all with
+   package name `com.rahulkannan.splitcycle`:
+
+   | Build | SHA-1 |
+   | --- | --- |
+   | Local builds (`npm run android`) | `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25` |
+   | EAS builds (`eas build`) | run `eas credentials` → Android → Keystore |
+   | Play Store installs | Play Console → App integrity → App signing key certificate |
+
+   The local-build SHA-1 is React Native's standard debug key, which is the same on every machine,
+   so it's fine for testing but shouldn't be what a public release relies on.
+
+New clients can take a few minutes to start working. Then in the app: Settings → Google Sheets
+Sync → **Sign in with Google** → **Create Workout Sheet**.
+
+If sign-in says Google doesn't recognise the build, the signing key of the APK on the phone isn't
+registered (step 3). If Google says access is blocked, the account isn't a test user (step 2).
+
+Opening sign-in to everyone means publishing the app in **Audience** (because `drive.file` is a
+non-sensitive scope, it doesn't need Google's full review) plus brand verification for the app
+name and logo, which needs a homepage and privacy policy.
+
+### Webhook instead of sign-in
+
+Settings → Advanced: Manual Webhook takes a Google Apps Script web app URL instead. It receives a
+POST with `{ routineName, exerciseId, exerciseName, date, weight, sets }` for each session and
+should append a row. It's only used when you're not signed in.
+
+## Where things are
+
+| Path | What |
+| --- | --- |
+| `src/data/routines.js` | The built-in 5-Day Cycle (what new installs and "Reset 5-Day Cycle" use) |
+| `src/storage/plans.js`, `planEdits.js` | Plans, which one is active, day/visit tracking, plan edits |
+| `src/storage/storage.js` | Logged history, PRs, today's drafts, and the Sheets export queue |
+| `src/storage/transferFormat.js`, `src/services/transfer.js` | Plan sharing and backups |
+| `src/services/` | Google sign-in and Sheets, photos/videos, YouTube links |
+| `src/screens/`, `src/components/` | The screens and exercise cards |

@@ -31,7 +31,7 @@ export default function WelcomeScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Welcome</Text>
+        <Text style={styles.title}>Welcome to SplitCycle</Text>
         <Text style={styles.subtitle}>How do you want to start?</Text>
 
         <TouchableOpacity style={styles.option} onPress={() => choose(startWithDefaultPlan)}>

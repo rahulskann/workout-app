@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "5-Day Workout Cycle",
+    "name": "SplitCycle",
     "slug": "workout-cycle-app",
     "version": "1.0.0",
-    "scheme": "workoutcycleapp",
+    "scheme": "splitcycle",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#121212",
     "android": {
-      "package": "com.rahulkannan.workoutcycle",
+      "package": "com.rahulkannan.splitcycle",
       "backgroundColor": "#121212"
     },
     "ios": {
-      "bundleIdentifier": "com.rahulkannan.workoutcycle",
+      "bundleIdentifier": "com.rahulkannan.splitcycle",
       "supportsTablet": false
     },
     "plugins": [

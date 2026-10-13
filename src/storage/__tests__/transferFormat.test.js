@@ -39,7 +39,7 @@ describe('shared plans', () => {
     const file = planToShareFile(plan);
     const text = JSON.stringify(file);
 
-    expect(file).toMatchObject({ app: 'workout-cycle', kind: 'plan', version: 1 });
+    expect(file).toMatchObject({ app: 'splitcycle', kind: 'plan', version: 1 });
     expect(file.plan.days[0].exercises[0]).toEqual({
       name: 'Bench Press',
       targetGroup: 'Chest',
@@ -76,6 +76,12 @@ describe('shared plans', () => {
     expect(shape(imported)).toEqual(shape(original));
   });
 
+  it('opens plan files made before the app was renamed', () => {
+    const oldFile = { ...planToShareFile(plan), app: 'workout-cycle' };
+
+    expect(planFromShareFile(oldFile).name).toBe('Push Pull');
+  });
+
   it('renames an import that clashes with an existing plan', () => {
     expect(planFromShareFile(planToShareFile(plan), ['Push Pull']).name).toBe('Push Pull (2)');
     expect(planFromShareFile(planToShareFile(plan), ['Push Pull', 'Push Pull (2)']).name).toBe(
@@ -106,9 +112,9 @@ describe('shared plans', () => {
   it.each([
     [null, "isn't a plan or backup"],
     [{ hello: 'world' }, "isn't a plan or backup"],
-    [{ app: 'workout-cycle', kind: 'backup', version: 1 }, 'full backup, not a single plan'],
-    [{ app: 'workout-cycle', kind: 'plan', version: 99, plan: {} }, 'newer version'],
-    [{ app: 'workout-cycle', kind: 'plan', version: 1, plan: { name: 'x' } }, 'damaged'],
+    [{ app: 'splitcycle', kind: 'backup', version: 1 }, 'full backup, not a single plan'],
+    [{ app: 'splitcycle', kind: 'plan', version: 99, plan: {} }, 'newer version'],
+    [{ app: 'splitcycle', kind: 'plan', version: 1, plan: { name: 'x' } }, 'damaged'],
   ])('rejects %p with a readable message', (data, message) => {
     expect(() => planFromShareFile(data)).toThrow(TransferError);
     expect(() => planFromShareFile(data)).toThrow(message);
@@ -131,7 +137,7 @@ describe('backups', () => {
     const file = backup();
     const ex = file.planState.plans[0].days[0].exercises[0];
 
-    expect(file).toMatchObject({ app: 'workout-cycle', kind: 'backup', version: 1 });
+    expect(file).toMatchObject({ app: 'splitcycle', kind: 'backup', version: 1 });
     expect(file.exercises).toEqual(exercises);
     expect(file.pendingExports).toEqual([{ id: 'row1' }]);
     expect(file.settings).toEqual({ themeMode: 'light', googleSheetsSpreadsheetId: 'sheet1' });
@@ -162,6 +168,12 @@ describe('backups', () => {
       loggedExercises: 1,
       photoCount: 1,
     });
+  });
+
+  it('restores backups made before the app was renamed', () => {
+    const oldBackup = { ...JSON.parse(JSON.stringify(backup())), app: 'workout-cycle' };
+
+    expect(parseBackup(oldBackup).planState.plans).toHaveLength(1);
   });
 
   it('rejects a plan file offered as a backup', () => {

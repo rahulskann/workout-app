@@ -14,7 +14,12 @@ import { useSettings } from '../context/SettingsContext';
 import { usePlans } from '../context/PlanContext';
 import { useTransfer } from '../hooks/useTransfer';
 import { getColors } from '../theme/colors';
-import { signInWithGoogle, signOutGoogle, getFreshAccessToken } from '../services/googleAuth';
+import {
+  signInWithGoogle,
+  signOutGoogle,
+  getFreshAccessToken,
+  describeSignInError,
+} from '../services/googleAuth';
 import { createWorkoutSpreadsheet } from '../services/googleSheets';
 
 export default function SettingsScreen({ navigation }) {
@@ -33,10 +38,10 @@ export default function SettingsScreen({ navigation }) {
   const handleSignIn = async () => {
     setSigningIn(true);
     try {
-      const { email } = await signInWithGoogle();
-      updateSettings({ googleAccountEmail: email || '' });
+      const result = await signInWithGoogle();
+      if (result) updateSettings({ googleAccountEmail: result.email || '' });
     } catch (e) {
-      Alert.alert('Sign-in failed', e?.message || 'Something went wrong signing in.');
+      Alert.alert('Sign-in failed', describeSignInError(e));
     } finally {
       setSigningIn(false);
     }
@@ -168,9 +173,8 @@ export default function SettingsScreen({ navigation }) {
             <>
               <Text style={styles.sectionSub}>
                 Sign in to create a workout log spreadsheet the app can write to -- it only ever
-                gets access to that one sheet, nothing else in your Drive. Requires a development
-                build (not Expo Go), and you'll need to be added as a test user by the app's owner
-                while it's not yet published.
+                gets access to that one sheet, nothing else in your Drive. While the app is in
+                testing, only Google accounts the app's owner has added as test users can sign in.
               </Text>
               <TouchableOpacity
                 style={styles.saveButton}

@@ -113,7 +113,7 @@ export async function backUpEverything() {
     settings: rawSettings ? JSON.parse(rawSettings) : {},
     photos,
   });
-  const file = writeExport(`workout-backup-${today()}.json`, backup);
+  const file = writeExport(`splitcycle-backup-${today()}.json`, backup);
   await share(file, 'Save your backup');
 }
 

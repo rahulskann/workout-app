@@ -55,7 +55,7 @@ export function openInYouTube(video) {
 // YouTube's embedded player wants to know which site or app is showing it,
 // and refuses to play ("Error 153") without a referrer, so the page is
 // loaded with the app's ID as its origin.
-export const EMBED_ORIGIN = 'https://com.rahulkannan.workoutcycle';
+export const EMBED_ORIGIN = 'https://com.rahulkannan.splitcycle';
 
 export function youTubeEmbedHtml({ id, start }) {
   const params = new URLSearchParams({
