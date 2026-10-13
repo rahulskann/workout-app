@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { makeDefaultPlan } from '../data/defaultPlan';
+import { makeDefaultPlan, DEFAULT_PLAN_ID } from '../data/defaultPlan';
 
 // Plan shape:
 //   { id, name, days: [{ id, name, exercises: [exercise] }] }
 // exercise:
-//   { exerciseId, name, targetGroup, targetSets, logType: 'weights' | 'checkbox', videoUri }
+//   { exerciseId, name, targetGroup, targetSets, logType: 'weights' | 'checkbox',
+//     videoUri, photoUri }
 // exerciseId is the storage key for logged history (see storage.js), so it
 // must be unique across every plan, not just within one.
 export const PLAN_KEYS = {
@@ -108,14 +109,36 @@ export function withPlanRemoved(state, planId) {
 }
 
 // Puts the original 5-Day Cycle back -- replacing any edits made to it, or
-// re-adding it if it was deleted -- and switches to it.
+// re-adding it if it was deleted -- and switches to it. Photos and videos
+// you'd added to its exercises are carried over, since they're yours rather
+// than part of the program.
 export function withDefaultPlanRestored(state) {
-  const fresh = makeDefaultPlan();
-  const exists = state.plans.some((p) => p.id === fresh.id);
-  const plans = exists
+  const current = state.plans.find((p) => p.id === DEFAULT_PLAN_ID);
+  const fresh = withMediaFrom(makeDefaultPlan(), current);
+  const plans = current
     ? state.plans.map((p) => (p.id === fresh.id ? fresh : p))
     : [...state.plans, fresh];
   return withActivePlan({ ...state, plans }, fresh.id);
+}
+
+const MEDIA_FIELDS = ['photoUri', 'videoUri'];
+
+function withMediaFrom(plan, source) {
+  if (!source) return plan;
+  const media = new Map();
+  for (const day of source.days) {
+    for (const ex of day.exercises) {
+      const kept = Object.fromEntries(MEDIA_FIELDS.filter((f) => ex[f]).map((f) => [f, ex[f]]));
+      if (Object.keys(kept).length) media.set(ex.exerciseId, kept);
+    }
+  }
+  return {
+    ...plan,
+    days: plan.days.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((ex) => ({ ...ex, ...media.get(ex.exerciseId) })),
+    })),
+  };
 }
 
 // Applies an edit to one plan (see planEdits.js). The plan's active day

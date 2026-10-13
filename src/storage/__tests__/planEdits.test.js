@@ -56,6 +56,7 @@ describe('plan edits', () => {
         targetSets: 3,
         logType: 'checkbox',
         videoUri: null,
+        photoUri: null,
       },
     ]);
   });

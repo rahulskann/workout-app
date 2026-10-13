@@ -216,4 +216,31 @@ describe('managing plans', () => {
     expect(state.plans).toHaveLength(2);
     expect(getActiveDayIndex(state, restored)).toBe(2);
   });
+
+  it('reset keeps photos and videos added to the 5-Day Cycle', () => {
+    let state = withDefaultPlanRestored(empty);
+    state = {
+      ...state,
+      plans: state.plans.map((p) => ({
+        ...p,
+        days: p.days.map((d) => ({
+          ...d,
+          exercises: d.exercises.map((ex) =>
+            ex.exerciseId === 'barbell_squat'
+              ? { ...ex, name: 'Renamed', photoUri: 'file:///media/rack.jpg', videoUri: 'file:///media/squat.mp4' }
+              : ex
+          ),
+        })),
+      })),
+    };
+
+    state = withDefaultPlanRestored(state);
+
+    const squat = getActivePlan(state)
+      .days.flatMap((d) => d.exercises)
+      .find((ex) => ex.exerciseId === 'barbell_squat');
+    expect(squat.name).toBe('Barbell Squat');
+    expect(squat.photoUri).toBe('file:///media/rack.jpg');
+    expect(squat.videoUri).toBe('file:///media/squat.mp4');
+  });
 });

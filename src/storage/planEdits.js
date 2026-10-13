@@ -10,7 +10,8 @@ export const DEFAULT_EXERCISE = {
   targetGroup: '',
   targetSets: 3,
   logType: 'weights',
-  videoUri: null,
+  videoUri: null, // a video file saved on the phone (see services/media.js)
+  photoUri: null, // a photo of the machine, also saved on the phone
 };
 
 export function renamePlan(plan, name) {

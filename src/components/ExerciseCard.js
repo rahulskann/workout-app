@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
 import { getColors } from '../theme/colors';
-import VideoModal from './VideoModal';
+import ExerciseThumb from './ExerciseThumb';
 
 const WEIGHT_STEP = 5;
 const REPS_STEP = 1;
@@ -41,18 +41,11 @@ export default function ExerciseCard({ exercise, onLog, onUndo, alwaysShowForm, 
 
 function CheckboxCard({ exercise, onLog, onUndo, colors, readOnly }) {
   const styles = makeStyles(colors);
-  const [videoVisible, setVideoVisible] = useState(false);
 
   return (
     <View style={[styles.card, exercise.completedToday && styles.cardDone]}>
       <View style={styles.row}>
-        <TouchableOpacity
-          style={styles.thumb}
-          onPress={() => setVideoVisible(true)}
-          disabled={!exercise.videoUri}
-        >
-          <Text style={styles.thumbIcon}>▶</Text>
-        </TouchableOpacity>
+        <ExerciseThumb exercise={exercise} colors={colors} />
 
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{exercise.name}</Text>
@@ -73,12 +66,6 @@ function CheckboxCard({ exercise, onLog, onUndo, colors, readOnly }) {
           </TouchableOpacity>
         )}
       </View>
-
-      <VideoModal
-        visible={videoVisible}
-        onClose={() => setVideoVisible(false)}
-        videoUri={exercise.videoUri}
-      />
     </View>
   );
 }
@@ -111,7 +98,6 @@ function formatSets(sets) {
 function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnly }) {
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
-  const [videoVisible, setVideoVisible] = useState(false);
   const [sets, setSets] = useState(() => startingSets(exercise));
   // touched*[0] is unused -- Set 1 always drives the others until they're
   // individually nudged, same rule for both weight and reps.
@@ -213,13 +199,7 @@ function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnl
   return (
     <View style={[styles.card, exercise.completedToday && styles.cardDone]}>
       <View style={styles.row}>
-        <TouchableOpacity
-          style={styles.thumb}
-          onPress={() => setVideoVisible(true)}
-          disabled={!exercise.videoUri}
-        >
-          <Text style={styles.thumbIcon}>▶</Text>
-        </TouchableOpacity>
+        <ExerciseThumb exercise={exercise} colors={colors} />
 
         <View style={{ flex: 1 }}>
           <View style={styles.titleRow}>
@@ -302,12 +282,6 @@ function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnl
           </TouchableOpacity>
         </View>
       )}
-
-      <VideoModal
-        visible={videoVisible}
-        onClose={() => setVideoVisible(false)}
-        videoUri={exercise.videoUri}
-      />
     </View>
   );
 }
@@ -326,16 +300,6 @@ function makeStyles(colors) {
       borderColor: colors.success,
     },
     row: { flexDirection: 'row', alignItems: 'center' },
-    thumb: {
-      width: 48,
-      height: 48,
-      borderRadius: 10,
-      backgroundColor: colors.accentSoft,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 12,
-    },
-    thumbIcon: { color: colors.accent, fontSize: 16 },
     titleRow: { flexDirection: 'row', alignItems: 'center' },
     title: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
     check: { color: colors.success, marginLeft: 8, fontWeight: '700' },

@@ -46,7 +46,7 @@ export default function PlansScreen({ navigation }) {
     Alert.alert(
       'Reset 5-Day Cycle?',
       hasDefault
-        ? 'Puts the original days and exercises back and makes it your active plan. Any changes you made to it will be lost; logged history and PRs are kept.'
+        ? 'Puts the original days and exercises back and makes it your active plan. Any changes you made to it will be lost; logged history, PRs, photos and videos are kept.'
         : 'Adds the original 5-Day Cycle back and makes it your active plan. Logged history and PRs from before are kept.',
       [
         { text: 'Cancel', style: 'cancel' },

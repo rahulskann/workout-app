@@ -17,7 +17,15 @@
     },
     "plugins": [
       "@react-native-google-signin/google-signin",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose photos and videos of exercises and gym machines.",
+          "cameraPermission": "Take photos and videos of exercises and gym machines.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "extra": {
       "eas": {

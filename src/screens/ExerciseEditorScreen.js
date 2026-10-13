@@ -1,11 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  Image,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSettings } from '../context/SettingsContext';
 import { usePlans } from '../context/PlanContext';
 import { getColors } from '../theme/colors';
 import { makeScreenStyles } from '../theme/screenStyles';
 import { newId } from '../storage/plans';
+import { pickPhoto, pickVideo } from '../services/media';
+import MediaModal from '../components/MediaModal';
 import {
   DEFAULT_EXERCISE,
   addExercise,
@@ -44,6 +55,22 @@ export default function ExerciseEditorScreen({ navigation, route }) {
   const [form, setForm] = useState(() => ({ ...DEFAULT_EXERCISE, ...existing }));
   const set = (changes) => setForm((f) => ({ ...f, ...changes }));
   const isCheckbox = form.logType === 'checkbox';
+  const [busy, setBusy] = useState(null); // 'photo' | 'video' while saving one
+  const [previewing, setPreviewing] = useState(null); // 'photo' | 'video'
+
+  // Media is picked into the form like any other field and only kept if you
+  // tap Save; files that end up unused are cleaned up on the next launch.
+  const addMedia = async (kind, source) => {
+    setBusy(kind);
+    try {
+      const uri = kind === 'photo' ? await pickPhoto(source) : await pickVideo(source);
+      if (uri) set(kind === 'photo' ? { photoUri: uri } : { videoUri: uri });
+    } catch (e) {
+      Alert.alert(`Couldn't add that ${kind}`, e?.message || 'Something went wrong.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   if (!day || (exerciseId && !existing)) return null; // deleted while open
 
@@ -57,6 +84,8 @@ export default function ExerciseEditorScreen({ navigation, route }) {
       name,
       targetGroup: (form.targetGroup || '').trim(),
       logType: form.logType,
+      photoUri: form.photoUri || null,
+      videoUri: form.videoUri || null,
       // Checkbox exercises are a single tick, so they're always 1 set.
       targetSets: isCheckbox ? 1 : form.targetSets,
     };
@@ -170,7 +199,66 @@ export default function ExerciseEditorScreen({ navigation, route }) {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSave}>
+        <Text style={styles.label}>Photo of the machine (optional)</Text>
+        {form.photoUri ? (
+          <View style={local.mediaRow}>
+            <TouchableOpacity onPress={() => setPreviewing('photo')}>
+              <Image source={{ uri: form.photoUri }} style={local.photo} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => set({ photoUri: null })}>
+              <Text style={local.removeText}>Remove photo</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View style={local.toggleRow}>
+          <SmallButton
+            local={local}
+            label={busy === 'photo' ? 'Saving…' : form.photoUri ? 'Retake' : 'Take photo'}
+            disabled={busy != null}
+            onPress={() => addMedia('photo', 'camera')}
+          />
+          <SmallButton
+            local={local}
+            label="Choose photo"
+            disabled={busy != null}
+            onPress={() => addMedia('photo', 'library')}
+          />
+        </View>
+        <Text style={styles.hint}>
+          Handy for remembering which machine or setup you use. It shows on the exercise card.
+        </Text>
+
+        <Text style={styles.label}>Video (optional)</Text>
+        {form.videoUri ? (
+          <View style={local.mediaRow}>
+            <TouchableOpacity style={local.videoChip} onPress={() => setPreviewing('video')}>
+              <Text style={local.videoChipText}>▶ Play video</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => set({ videoUri: null })}>
+              <Text style={local.removeText}>Remove video</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View style={local.toggleRow}>
+          <SmallButton
+            local={local}
+            label={busy === 'video' ? 'Saving…' : 'Record video'}
+            disabled={busy != null}
+            onPress={() => addMedia('video', 'camera')}
+          />
+          <SmallButton
+            local={local}
+            label="Choose video"
+            disabled={busy != null}
+            onPress={() => addMedia('video', 'library')}
+          />
+        </View>
+        <Text style={styles.hint}>
+          A short clip of the movement plays on a loop when you tap the exercise's picture.
+          Recording stops at 60 seconds.
+        </Text>
+
+        <TouchableOpacity style={styles.primaryButton} onPress={handleSave} disabled={busy != null}>
           <Text style={styles.primaryButtonText}>{existing ? 'Save' : 'Add exercise'}</Text>
         </TouchableOpacity>
 
@@ -180,7 +268,26 @@ export default function ExerciseEditorScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <MediaModal
+        visible={previewing != null}
+        onClose={() => setPreviewing(null)}
+        photoUri={previewing === 'photo' ? form.photoUri : null}
+        videoUri={previewing === 'video' ? form.videoUri : null}
+      />
     </SafeAreaView>
+  );
+}
+
+function SmallButton({ local, label, onPress, disabled }) {
+  return (
+    <TouchableOpacity
+      style={[local.choice, disabled && local.disabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Text style={local.choiceText}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -236,5 +343,16 @@ function makeStyles(colors) {
     chipActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
     chipText: { color: colors.textSecondary, fontSize: 13 },
     chipTextActive: { color: colors.accent, fontWeight: '600' },
+    disabled: { opacity: 0.5 },
+    mediaRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 10 },
+    photo: { width: 96, height: 96, borderRadius: 12, backgroundColor: colors.card },
+    removeText: { color: colors.danger, fontWeight: '600' },
+    videoChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: colors.accentSoft,
+    },
+    videoChipText: { color: colors.accent, fontWeight: '700' },
   });
 }

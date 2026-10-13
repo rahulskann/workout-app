@@ -16,6 +16,7 @@ import {
 } from '../storage/plans';
 import { makeDefaultPlan } from '../data/defaultPlan';
 import { commitDrafts } from '../storage/storage';
+import { cleanUnusedMedia } from '../services/media';
 
 const EMPTY_STATE = { plans: [], activePlanId: null, progress: {} };
 
@@ -58,7 +59,19 @@ export function PlanProvider({ children }) {
 
   useEffect(() => {
     loadPlanState()
-      .catch(() => EMPTY_STATE)
+      .then(
+        (loadedState) => {
+          // Only after a successful load: with plans missing, every photo
+          // and video would look unused.
+          try {
+            cleanUnusedMedia(loadedState.plans);
+          } catch (e) {
+            // leftover files just take up space; try again next launch
+          }
+          return loadedState;
+        },
+        () => EMPTY_STATE
+      )
       .then(async (loadedState) => {
         await finishEndedVisits(loadedState);
         stateRef.current = loadedState;
