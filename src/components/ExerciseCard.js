@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
 import { getColors } from '../theme/colors';
 import VideoModal from './VideoModal';
@@ -10,17 +10,26 @@ const DEFAULT_REPS = 12;
 
 // readOnly is for days you're previewing: stats and videos still work, but
 // nothing can be ticked or logged until the day is made active.
-export default function ExerciseCard({ exercise, onLog, alwaysShowForm, readOnly }) {
+export default function ExerciseCard({ exercise, onLog, onUndo, alwaysShowForm, readOnly }) {
   const { settings } = useSettings();
   const colors = getColors(settings.themeMode);
 
   if (exercise.logType === 'checkbox') {
-    return <CheckboxCard exercise={exercise} onLog={onLog} colors={colors} readOnly={readOnly} />;
+    return (
+      <CheckboxCard
+        exercise={exercise}
+        onLog={onLog}
+        onUndo={onUndo}
+        colors={colors}
+        readOnly={readOnly}
+      />
+    );
   }
   return (
     <WeightedCard
       exercise={exercise}
       onLog={onLog}
+      onUndo={onUndo}
       colors={colors}
       alwaysShowForm={alwaysShowForm && !readOnly}
       readOnly={readOnly}
@@ -30,7 +39,7 @@ export default function ExerciseCard({ exercise, onLog, alwaysShowForm, readOnly
 
 // ---------- Checkbox variant (warm-ups, cooldowns, mobility routines) ----------
 
-function CheckboxCard({ exercise, onLog, colors, readOnly }) {
+function CheckboxCard({ exercise, onLog, onUndo, colors, readOnly }) {
   const styles = makeStyles(colors);
   const [videoVisible, setVideoVisible] = useState(false);
 
@@ -57,8 +66,8 @@ function CheckboxCard({ exercise, onLog, colors, readOnly }) {
         {!readOnly && (
           <TouchableOpacity
             style={[styles.checkbox, exercise.completedToday && styles.checkboxChecked]}
-            onPress={() => onLog(exercise, {})}
-            disabled={exercise.completedToday}
+            // Tapping a ticked box unticks it, so a mis-tap is one tap to fix.
+            onPress={() => (exercise.completedToday ? onUndo(exercise) : onLog(exercise, {}))}
           >
             {exercise.completedToday ? <Text style={styles.checkboxMark}>✓</Text> : null}
           </TouchableOpacity>
@@ -80,24 +89,59 @@ function makeDefaultSets(count) {
   return Array.from({ length: count }, () => ({ weight: 0, reps: DEFAULT_REPS }));
 }
 
-function WeightedCard({ exercise, onLog, colors, alwaysShowForm, readOnly }) {
+// What the log form opens with: today's numbers when editing them, otherwise
+// last session's so you only adjust what changed, otherwise blanks.
+function startingSets(exercise) {
+  const todaySets = exercise.completedToday ? exercise.today?.sets : null;
+  const lastSets = exercise.history?.[exercise.history.length - 1]?.sets;
+  const source = todaySets?.length ? todaySets : lastSets?.length ? lastSets : null;
+  return source ? source.map((s) => ({ ...s })) : makeDefaultSets(exercise.targetSets);
+}
+
+// A set counts as already "touched" if it differs from Set 1, so nudging
+// Set 1 doesn't flatten a pre-filled drop set.
+function touchedFrom(sets, field) {
+  return sets.map((s, i) => i > 0 && s[field] !== sets[0][field]);
+}
+
+function formatSets(sets) {
+  return sets.map((s) => `${s.weight}×${s.reps}`).join(' · ');
+}
+
+function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnly }) {
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
   const [videoVisible, setVideoVisible] = useState(false);
-  const [sets, setSets] = useState(makeDefaultSets(exercise.targetSets));
+  const [sets, setSets] = useState(() => startingSets(exercise));
   // touched*[0] is unused -- Set 1 always drives the others until they're
   // individually nudged, same rule for both weight and reps.
-  const [touchedWeight, setTouchedWeight] = useState(Array(exercise.targetSets).fill(false));
-  const [touchedReps, setTouchedReps] = useState(Array(exercise.targetSets).fill(false));
+  const [touchedWeight, setTouchedWeight] = useState(() => touchedFrom(sets, 'weight'));
+  const [touchedReps, setTouchedReps] = useState(() => touchedFrom(sets, 'reps'));
 
+  const done = exercise.completedToday;
   const isOpen = !readOnly && (alwaysShowForm || expanded);
   const originalSetCount = exercise.targetSets;
+  const todaySets = done ? exercise.today?.sets || [] : [];
 
   const history = exercise.history || [];
   const lastTwoLabel =
     history.length > 0
       ? history.map((h) => `${Math.max(...(h.sets || []).map((s) => s.weight))}lbs`).join(', ')
       : '—';
+  // Today's sets only join history when the day ends, but a new PR should
+  // show the moment you log it.
+  const pr = Math.max(exercise.maxWeight || 0, ...todaySets.map((s) => s.weight));
+
+  const loadForm = (next) => {
+    setSets(next);
+    setTouchedWeight(touchedFrom(next, 'weight'));
+    setTouchedReps(touchedFrom(next, 'reps'));
+  };
+
+  const openForm = () => {
+    loadForm(startingSets(exercise));
+    setExpanded(true);
+  };
 
   const nudgeWeight = (idx, direction) => {
     if (idx === 0) {
@@ -143,18 +187,27 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm, readOnly }) {
     setTouchedReps((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const resetForm = () => {
-    setSets(makeDefaultSets(exercise.targetSets));
-    setTouchedWeight(Array(exercise.targetSets).fill(false));
-    setTouchedReps(Array(exercise.targetSets).fill(false));
-    if (!alwaysShowForm) setExpanded(false);
-  };
-
   const handleLog = () => {
     // 0 lbs is a real value: push-ups, squat jumps, dips etc. are bodyweight.
     if (sets.length === 0 || sets.some((s) => s.reps < 1)) return;
     onLog(exercise, { sets });
-    resetForm();
+    setExpanded(false);
+  };
+
+  const handleUndo = () => {
+    Alert.alert(`Undo ${exercise.name}?`, `Removes today's sets (${formatSets(todaySets)}).`, [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Undo',
+        style: 'destructive',
+        onPress: () => {
+          onUndo(exercise);
+          setExpanded(false);
+          // Back to last session's numbers for the always-visible form.
+          loadForm(startingSets({ ...exercise, completedToday: false }));
+        },
+      },
+    ]);
   };
 
   return (
@@ -180,12 +233,17 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm, readOnly }) {
             <Text style={styles.metaText}>{exercise.targetSets} Sets</Text>
           </View>
           <Text style={styles.statsText}>
-            PR: {exercise.maxWeight || 0} lbs · Last 2: {lastTwoLabel}
+            PR: {pr} lbs · Last 2: {lastTwoLabel}
           </Text>
         </View>
 
+        {/* Tapping the pencil on a logged exercise reopens it with today's
+            numbers; saving replaces them rather than adding a second session. */}
         {!alwaysShowForm && !readOnly && (
-          <TouchableOpacity style={styles.editButton} onPress={() => setExpanded((v) => !v)}>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => (expanded ? setExpanded(false) : openForm())}
+          >
             <Text style={styles.editButtonText}>{expanded ? '✕' : '✏️'}</Text>
           </TouchableOpacity>
         )}
@@ -228,12 +286,19 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm, readOnly }) {
             </View>
           ))}
 
-          <TouchableOpacity style={styles.addSetButton} onPress={addSet}>
-            <Text style={styles.addSetText}>+ Add Set</Text>
-          </TouchableOpacity>
+          <View style={styles.formLinksRow}>
+            <TouchableOpacity onPress={addSet}>
+              <Text style={styles.addSetText}>+ Add Set</Text>
+            </TouchableOpacity>
+            {done && (
+              <TouchableOpacity onPress={handleUndo}>
+                <Text style={styles.undoText}>Undo log</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           <TouchableOpacity style={styles.saveButton} onPress={handleLog}>
-            <Text style={styles.saveButtonText}>Log</Text>
+            <Text style={styles.saveButtonText}>{done ? 'Save Changes' : 'Log'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -345,11 +410,14 @@ function makeStyles(colors) {
       width: 56,
       textAlign: 'center',
     },
-    addSetButton: {
-      alignSelf: 'flex-start',
+    formLinksRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
       marginBottom: 10,
     },
     addSetText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
+    undoText: { color: colors.danger, fontSize: 13, fontWeight: '600' },
     saveButton: {
       backgroundColor: colors.accent,
       borderRadius: 8,

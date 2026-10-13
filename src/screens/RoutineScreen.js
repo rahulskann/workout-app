@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getExercisesForRoutine, logSession, flushPendingExports } from '../storage/storage';
+import {
+  getExercisesForRoutine,
+  logSession,
+  clearToday,
+  flushPendingExports,
+} from '../storage/storage';
 import ExerciseCard from '../components/ExerciseCard';
 import DaySelectorBar from '../components/DaySelectorBar';
 import { useSettings } from '../context/SettingsContext';
@@ -60,6 +65,15 @@ export default function RoutineScreen({ navigation }) {
       await logSession({ ...exercise, routineName: viewedDay.name }, payload, activeVisitId);
     } catch (e) {
       Alert.alert("Couldn't save that", e?.message || 'Something went wrong saving this exercise.');
+    }
+    reload();
+  };
+
+  const handleUndo = async (exercise) => {
+    try {
+      await clearToday(exercise, activeVisitId);
+    } catch (e) {
+      Alert.alert("Couldn't undo that", e?.message || 'Something went wrong.');
     }
     reload();
   };
@@ -147,6 +161,7 @@ export default function RoutineScreen({ navigation }) {
               key={ex.exerciseId}
               exercise={ex}
               onLog={handleLog}
+              onUndo={handleUndo}
               alwaysShowForm={settings.logFormMode === 'always'}
               readOnly={!isViewingActive}
             />

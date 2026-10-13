@@ -7,8 +7,16 @@ import {
   getActiveVisitId,
   withActiveDay,
 } from '../storage/plans';
+import { commitDrafts } from '../storage/storage';
 
 const EMPTY_STATE = { plans: [], activePlanId: null, progress: {} };
+
+// Commits today's logged sets from every visit except the one in progress
+// (see commitDrafts), so they land in history, PRs and the Sheets queue.
+function finishEndedVisits(state) {
+  const exercises = state.plans.flatMap((p) => p.days.flatMap((d) => d.exercises));
+  return commitDrafts(exercises, getActiveVisitId(state, getActivePlan(state))).catch(() => {});
+}
 
 const PlanContext = createContext({
   loaded: false,
@@ -29,7 +37,8 @@ export function PlanProvider({ children }) {
   useEffect(() => {
     loadPlanState()
       .catch(() => EMPTY_STATE)
-      .then((loadedState) => {
+      .then(async (loadedState) => {
+        await finishEndedVisits(loadedState);
         stateRef.current = loadedState;
         setState(loadedState);
         setLoaded(true);
@@ -43,13 +52,15 @@ export function PlanProvider({ children }) {
   }, []);
 
   // Starts a fresh visit of the given day, which clears the checklist of the
-  // day being left (see withActiveDay).
+  // day being left (see withActiveDay) and commits what was logged there.
   const setActiveDayIndex = useCallback(
-    (index) => {
+    async (index) => {
       const current = stateRef.current;
       const plan = getActivePlan(current);
-      if (!plan) return Promise.resolve();
-      return commit(withActiveDay(current, plan.id, index));
+      if (!plan) return;
+      const next = withActiveDay(current, plan.id, index);
+      await commit(next);
+      await finishEndedVisits(next);
     },
     [commit]
   );

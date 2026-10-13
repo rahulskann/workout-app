@@ -12,18 +12,25 @@ const KEYS = {
 
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
-// Saved per exercise: { history, maxWeight, today }, where today is
-// { visitId } once it's been ticked or logged during that visit of its day.
-// A session's "sets" field is an array of { weight, reps } -- one entry per
-// set, independently editable.
+// Saved per exercise: { history, maxWeight, today }.
+//  - history: up to 2 finished sessions, each { date, sets: [{ weight, reps }] }
+//  - today: what was ticked or logged during one visit of its day --
+//      { visitId } for checkbox exercises, or
+//      { visitId, date, sets, routineName } for weighted ones.
+// Today's sets are a draft you can edit or undo while the day is active. They
+// only move into history (and the Sheets queue) once that visit ends -- see
+// commitDrafts -- so an undo never leaves a stray row in the sheet.
 //
 // Returns the exercise merged with its saved state. completedToday is only
-// true for ticks made during visitId (the active day's current visit), so a
-// day you've moved on from shows a clean checklist. Pass no visitId for a
-// day you're only previewing.
+// true for the visit passed in (the active day's current visit), so a day
+// you've moved on from shows a clean checklist. Pass no visitId for a day
+// you're only previewing.
 export async function getExerciseState(exercise, visitId = null) {
   const raw = await AsyncStorage.getItem(KEYS.EXERCISE_PREFIX + exercise.exerciseId);
-  const saved = raw ? JSON.parse(raw) : {};
+  return parseExerciseState(exercise, raw ? JSON.parse(raw) : {}, visitId);
+}
+
+function parseExerciseState(exercise, saved, visitId) {
   // saved.completedToday (from before visits) is ignored on purpose: those
   // ticks can't be tied to a visit, so they'd never clear.
   return {
@@ -60,55 +67,33 @@ export async function getExercisesForRoutine(routine, visitId = null) {
   return Promise.all(routine.exercises.map((ex) => getExerciseState(ex, visitId)));
 }
 
-// Logs a new session for a weighted (non-checkbox) exercise.
-// payload: { sets: [{ weight, reps }, ...] } -- one entry per set, in
-// whatever order/count the user ended up with (extra sets allowed).
-// Implements the 2-entry rolling FIFO queue described in the spec: when
-// history is already length 2, the oldest entry (index 0) is dropped and
-// moved to the export queue, then the new session is appended. The new
-// session is saved before any network call, so a failed or offline export
-// can't lose it, and the dropped one stays queued until Sheets confirms it.
-// visitId is the active day's current visit (see storage/plans.js).
+// Logs (or re-logs) today's sets for a weighted exercise during visitId, the
+// active day's current visit (see storage/plans.js). payload:
+// { sets: [{ weight, reps }, ...] } -- one entry per set, in whatever
+// order/count the user ended up with (extra sets allowed). Logging again
+// during the same visit replaces the earlier numbers.
 export async function logSession(exercise, payload, visitId) {
   if (exercise.logType === 'checkbox') {
     return logCheckboxComplete(exercise, visitId);
   }
 
-  const current = await getExerciseState(exercise, visitId);
-  const { sets } = payload;
-  const topWeight = Math.max(...sets.map((s) => s.weight));
-  const newEntry = { date: new Date().toISOString().slice(0, 10), sets };
-
-  let history = [...(current.history || [])];
-  let dropped = null;
-
-  if (history.length === 2) {
-    dropped = history[0];
-    history = [history[1], newEntry];
-  } else {
-    history.push(newEntry);
+  let current = await getExerciseState(exercise, visitId);
+  let queued = false;
+  if (current.today && current.today.visitId !== visitId) {
+    // A draft from a visit that never got committed (app closed mid-way):
+    // finish it first rather than overwrite it.
+    const { next, dropped } = finishDraft(current);
+    if (dropped) {
+      await queueExport(dropped);
+      queued = true;
+    }
+    current = { ...current, ...next };
   }
 
-  const maxWeight = Math.max(current.maxWeight, topWeight);
-  const today = { visitId };
-
-  await saveExerciseState(exercise.exerciseId, { history, maxWeight, today });
-
-  if (dropped) {
-    const droppedSets = dropped.sets || [];
-    await queueExport({
-      id: `${exercise.exerciseId}:${dropped.date}:${Date.now()}`,
-      routineName: exercise.routineName,
-      exerciseId: exercise.exerciseId,
-      exerciseName: exercise.name,
-      date: dropped.date,
-      weight: droppedSets.length ? Math.max(...droppedSets.map((s) => s.weight)) : 0,
-      sets: droppedSets,
-    });
-    flushPendingExports(); // fire-and-forget; anything unsent retries on next launch
-  }
-
-  return { ...current, history, maxWeight, today, completedToday: true };
+  const today = { visitId, date: localDate(), sets: payload.sets, routineName: exercise.routineName };
+  await saveExerciseState(exercise.exerciseId, { ...current, today });
+  if (queued) flushPendingExports();
+  return { ...current, today, completedToday: true };
 }
 
 // Checkbox-type exercises (warm-ups, cooldowns, mobility routines) just
@@ -118,6 +103,81 @@ export async function logCheckboxComplete(exercise, visitId) {
   const today = { visitId };
   await saveExerciseState(exercise.exerciseId, { ...current, today });
   return { ...current, today, completedToday: true };
+}
+
+// Undoes today's tick or logged sets, as long as the visit is still going.
+export async function clearToday(exercise, visitId) {
+  const current = await getExerciseState(exercise, visitId);
+  if (!current.completedToday) return current;
+  await saveExerciseState(exercise.exerciseId, { ...current, today: null });
+  return { ...current, today: null, completedToday: false };
+}
+
+// Moves sessions logged during earlier visits into history, leaving
+// keepVisitId's (the visit still in progress) alone. Call it whenever a
+// visit ends, and at startup to catch anything left from a visit the app was
+// closed in the middle of.
+export async function commitDrafts(exercises, keepVisitId) {
+  const rows = await AsyncStorage.multiGet(
+    exercises.map((ex) => KEYS.EXERCISE_PREFIX + ex.exerciseId)
+  );
+  for (let i = 0; i < exercises.length; i++) {
+    const raw = rows[i][1];
+    if (!raw) continue;
+    const state = parseExerciseState(exercises[i], JSON.parse(raw), keepVisitId);
+    if (!state.today || state.today.visitId === keepVisitId) continue;
+    const { next, dropped } = finishDraft(state);
+    // Queue before saving: if the app dies in between, the worst case is a
+    // duplicate row in the sheet rather than a lost session.
+    if (dropped) await queueExport(dropped);
+    await saveExerciseState(exercises[i].exerciseId, next);
+  }
+  flushPendingExports();
+}
+
+// The 2-entry rolling FIFO from the spec: today's draft is appended to
+// history, and once history is full the oldest session is dropped and
+// returned as an export payload (the queue keeps it until Sheets confirms).
+function finishDraft(state) {
+  const { today } = state;
+  if (!today?.sets?.length) {
+    return { next: { history: state.history, maxWeight: state.maxWeight, today: null }, dropped: null };
+  }
+  const entry = { date: today.date, sets: today.sets };
+  let history = [...state.history];
+  let droppedEntry = null;
+  if (history.length >= 2) {
+    droppedEntry = history[0];
+    history = [...history.slice(1), entry];
+  } else {
+    history.push(entry);
+  }
+  const maxWeight = Math.max(state.maxWeight, ...today.sets.map((s) => s.weight));
+  return {
+    next: { history, maxWeight, today: null },
+    dropped: droppedEntry && toExportPayload(state, droppedEntry, today.routineName),
+  };
+}
+
+function toExportPayload(exercise, entry, routineName) {
+  const sets = entry.sets || [];
+  return {
+    id: `${exercise.exerciseId}:${entry.date}:${Date.now()}`,
+    routineName,
+    exerciseId: exercise.exerciseId,
+    exerciseName: exercise.name,
+    date: entry.date,
+    weight: sets.length ? Math.max(...sets.map((s) => s.weight)) : 0,
+    sets,
+  };
+}
+
+// YYYY-MM-DD in the phone's timezone. (toISOString is UTC, which turns an
+// evening workout in the US into tomorrow's date.)
+function localDate() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 // ---------- Export pipeline ----------
