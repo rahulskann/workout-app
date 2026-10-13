@@ -63,6 +63,28 @@ function migrateHistoryEntry(h) {
   return { date: h.date, sets: [{ weight: h.weight || 0, reps: h.reps || 12 }] };
 }
 
+// Every exercise's saved state, keyed by exerciseId -- for backups.
+export async function getAllExerciseStates() {
+  const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(KEYS.EXERCISE_PREFIX));
+  const rows = await AsyncStorage.multiGet(keys);
+  return Object.fromEntries(
+    rows
+      .filter(([, value]) => value)
+      .map(([key, value]) => [key.slice(KEYS.EXERCISE_PREFIX.length), JSON.parse(value)])
+  );
+}
+
+// Replaces every exercise's saved state with the given ones (a restore).
+export async function replaceAllExerciseStates(states) {
+  const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(KEYS.EXERCISE_PREFIX));
+  if (keys.length) await AsyncStorage.multiRemove(keys);
+  const entries = Object.entries(states).map(([id, state]) => [
+    KEYS.EXERCISE_PREFIX + id,
+    JSON.stringify(state),
+  ]);
+  if (entries.length) await AsyncStorage.multiSet(entries);
+}
+
 export async function getExercisesForRoutine(routine, visitId = null) {
   return Promise.all(routine.exercises.map((ex) => getExerciseState(ex, visitId)));
 }
@@ -257,6 +279,10 @@ function queueExport(payload) {
 
 export function getPendingExports() {
   return withQueueLock(readPendingExports);
+}
+
+export function replacePendingExports(queue) {
+  return withQueueLock(() => AsyncStorage.setItem(KEYS.PENDING_EXPORTS, JSON.stringify(queue)));
 }
 
 let flushing = null;

@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSettings } from '../context/SettingsContext';
 import { usePlans } from '../context/PlanContext';
+import { useTransfer } from '../hooks/useTransfer';
 import { getColors } from '../theme/colors';
 import { signInWithGoogle, signOutGoogle, getFreshAccessToken } from '../services/googleAuth';
 import { createWorkoutSpreadsheet } from '../services/googleSheets';
@@ -19,6 +20,7 @@ import { createWorkoutSpreadsheet } from '../services/googleSheets';
 export default function SettingsScreen({ navigation }) {
   const { settings, updateSettings } = useSettings();
   const { activePlan } = usePlans();
+  const transfer = useTransfer();
   const colors = getColors(settings.themeMode);
   const styles = makeStyles(colors);
 
@@ -92,6 +94,33 @@ export default function SettingsScreen({ navigation }) {
           </Text>
           <TouchableOpacity style={styles.saveButton} onPress={() => navigation.navigate('Plans')}>
             <Text style={styles.saveButtonText}>Manage Plans</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Backup</Text>
+          <Text style={styles.sectionSub}>
+            Saves your plans, logged history, PRs, photos and settings into one file. Keep it
+            somewhere safe (Drive, or email it to yourself) and restore it on a new phone.
+            Videos you recorded aren't included, since they're too big; YouTube links are.
+          </Text>
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={transfer.backUp}
+            disabled={!!transfer.busy}
+          >
+            <Text style={styles.saveButtonText}>
+              {transfer.busy === 'backup' ? 'Preparing…' : 'Back up everything'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={transfer.restore}
+            disabled={!!transfer.busy}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {transfer.busy === 'restore' ? 'Restoring…' : 'Restore from backup'}
+            </Text>
           </TouchableOpacity>
         </View>
 

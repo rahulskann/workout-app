@@ -14,7 +14,7 @@ export const MAX_RECORDING_SECONDS = 10 * 60;
 const LARGE_VIDEO_MB = 200; // ask before keeping anything bigger
 const MAX_VIDEO_MB = 2048;
 
-function mediaDir() {
+export function mediaDir() {
   const dir = new Directory(Paths.document, 'media');
   if (!dir.exists) dir.create();
   return dir;

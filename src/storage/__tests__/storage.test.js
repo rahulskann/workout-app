@@ -6,6 +6,9 @@ import {
   getExerciseState,
   getPendingExports,
   flushPendingExports,
+  getAllExerciseStates,
+  replaceAllExerciseStates,
+  replacePendingExports,
 } from '../storage';
 import { SETTINGS_KEY } from '../../constants/storageKeys';
 
@@ -211,5 +214,30 @@ describe('history and export queue', () => {
 
     await flushPendingExports();
     expect(await getPendingExports()).toEqual([]);
+  });
+});
+
+describe('backup and restore', () => {
+  it('reads every exercise state and replaces them all on restore', async () => {
+    await logAndFinish(squat, 100);
+    await logSession(press, { sets: sets(90) }, 'v-live');
+    await AsyncStorage.setItem('workout:settings', '{}'); // not an exercise key
+
+    const saved = await getAllExerciseStates();
+    expect(Object.keys(saved).sort()).toEqual(['barbell_squat', 'leg_press']);
+
+    await logAndFinish(warmup, 0); // logged after the backup was taken
+    await replaceAllExerciseStates(saved);
+
+    expect(Object.keys(await getAllExerciseStates()).sort()).toEqual(['barbell_squat', 'leg_press']);
+    expect((await getExerciseState(squat)).history).toHaveLength(1);
+    expect((await getExerciseState(press, 'v-live')).completedToday).toBe(true);
+    expect(await AsyncStorage.getItem('workout:settings')).toBe('{}');
+  });
+
+  it('replaces the Sheets queue', async () => {
+    await replacePendingExports([{ id: 'a' }, { id: 'b' }]);
+
+    expect(await getPendingExports()).toEqual([{ id: 'a' }, { id: 'b' }]);
   });
 });

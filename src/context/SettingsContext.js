@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_KEY } from '../constants/storageKeys';
 
@@ -15,6 +15,7 @@ const defaultSettings = {
 const SettingsContext = createContext({
   settings: defaultSettings,
   updateSettings: () => {},
+  reloadSettings: () => {},
   loaded: false,
 });
 
@@ -22,20 +23,21 @@ export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(defaultSettings);
   const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-        if (raw) {
-          setSettings({ ...defaultSettings, ...JSON.parse(raw) });
-        }
-      } catch (e) {
-        // fall back to defaults silently
-      } finally {
-        setLoaded(true);
-      }
-    })();
+  // Reads settings from storage: at startup, and again after a restore.
+  const reloadSettings = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+      setSettings(raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings);
+    } catch (e) {
+      // fall back to defaults silently
+    } finally {
+      setLoaded(true);
+    }
   }, []);
+
+  useEffect(() => {
+    reloadSettings();
+  }, [reloadSettings]);
 
   const updateSettings = (patch) => {
     setSettings((prev) => {
@@ -46,7 +48,7 @@ export function SettingsProvider({ children }) {
   };
 
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings, loaded }}>
+    <SettingsContext.Provider value={{ settings, updateSettings, reloadSettings, loaded }}>
       {children}
     </SettingsContext.Provider>
   );

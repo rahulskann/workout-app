@@ -49,6 +49,8 @@ const PlanContext = createContext({
   duplicatePlan: () => {},
   deletePlan: () => {},
   editPlan: () => {},
+  addImportedPlan: () => {},
+  reloadPlans: () => {},
 });
 
 export function PlanProvider({ children }) {
@@ -57,28 +59,35 @@ export function PlanProvider({ children }) {
   // Latest state for actions, so they never compute from a stale render.
   const stateRef = useRef(EMPTY_STATE);
 
+  // Reads plans from storage: at startup, and again after a restore.
+  const reloadPlans = useCallback(
+    () =>
+      loadPlanState()
+        .then(
+          (loadedState) => {
+            // Only after a successful load: with plans missing, every photo
+            // and video would look unused.
+            try {
+              cleanUnusedMedia(loadedState.plans);
+            } catch (e) {
+              // leftover files just take up space; try again next launch
+            }
+            return loadedState;
+          },
+          () => EMPTY_STATE
+        )
+        .then(async (loadedState) => {
+          await finishEndedVisits(loadedState);
+          stateRef.current = loadedState;
+          setState(loadedState);
+          setLoaded(true);
+        }),
+    []
+  );
+
   useEffect(() => {
-    loadPlanState()
-      .then(
-        (loadedState) => {
-          // Only after a successful load: with plans missing, every photo
-          // and video would look unused.
-          try {
-            cleanUnusedMedia(loadedState.plans);
-          } catch (e) {
-            // leftover files just take up space; try again next launch
-          }
-          return loadedState;
-        },
-        () => EMPTY_STATE
-      )
-      .then(async (loadedState) => {
-        await finishEndedVisits(loadedState);
-        stateRef.current = loadedState;
-        setState(loadedState);
-        setLoaded(true);
-      });
-  }, []);
+    reloadPlans();
+  }, [reloadPlans]);
 
   // Applies a change to the plan state, saves it, then commits whatever was
   // logged during visits the change ended (switching day or plan, deleting).
@@ -126,6 +135,9 @@ export function PlanProvider({ children }) {
   // switches to it. Used by the welcome screen and "Reset 5-Day Cycle".
   const startWithDefaultPlan = useCallback(() => apply(withDefaultPlanRestored), [apply]);
 
+  // Adds a plan from a shared file (already given fresh IDs) and switches to it.
+  const addImportedPlan = useCallback((plan) => apply((s) => withPlanAdded(s, plan)), [apply]);
+
   const createBlankPlan = useCallback(
     () => apply((s) => withPlanAdded(s, blankPlan())),
     [apply]
@@ -172,6 +184,8 @@ export function PlanProvider({ children }) {
         duplicatePlan,
         deletePlan,
         editPlan,
+        addImportedPlan,
+        reloadPlans,
       }}
     >
       {children}

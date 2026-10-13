@@ -108,8 +108,9 @@ export default function ExerciseEditorScreen({ navigation, route }) {
       photoUri: form.photoUri || null,
       videoUri: form.videoUri || null,
       videoUrl: videoUrl || null,
-      // Checkbox exercises are a single tick, so they're always 1 set.
-      targetSets: isCheckbox ? 1 : form.targetSets,
+      // Kept even for checkbox exercises (which don't show it), so switching
+      // one back to weights brings back its real set count.
+      targetSets: form.targetSets,
     };
     await editPlan(planId, (p) =>
       existing

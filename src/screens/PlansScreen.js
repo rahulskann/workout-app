@@ -5,6 +5,7 @@ import { useSettings } from '../context/SettingsContext';
 import { usePlans } from '../context/PlanContext';
 import { getColors } from '../theme/colors';
 import { DEFAULT_PLAN_ID } from '../data/defaultPlan';
+import { useTransfer } from '../hooks/useTransfer';
 
 function planSummary(plan) {
   const exercises = plan.days.reduce((n, d) => n + d.exercises.length, 0);
@@ -26,6 +27,7 @@ export default function PlansScreen({ navigation }) {
     duplicatePlan,
     deletePlan,
   } = usePlans();
+  const transfer = useTransfer();
 
   const confirmDelete = (plan) => {
     const isDefault = plan.id === DEFAULT_PLAN_ID;
@@ -88,6 +90,9 @@ export default function PlansScreen({ navigation }) {
                 <TouchableOpacity onPress={() => duplicatePlan(plan.id)}>
                   <Text style={styles.link}>Duplicate</Text>
                 </TouchableOpacity>
+                <TouchableOpacity onPress={() => transfer.share(plan)} disabled={!!transfer.busy}>
+                  <Text style={styles.link}>Share</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => confirmDelete(plan)}>
                   <Text style={styles.dangerLink}>Delete</Text>
                 </TouchableOpacity>
@@ -100,13 +105,23 @@ export default function PlansScreen({ navigation }) {
           <Text style={styles.sectionTitle}>New plan</Text>
           <Text style={styles.sectionSub}>
             New plans become your active plan. Copies keep their own history and PRs, separate
-            from the original.
+            from the original. "Share" on a plan sends its days, exercises and YouTube links (not
+            your history or photos) as a file someone can import here.
           </Text>
           <TouchableOpacity style={styles.secondaryButton} onPress={createBlankPlan}>
             <Text style={styles.secondaryButtonText}>Blank plan</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={createCopyOfDefaultPlan}>
             <Text style={styles.secondaryButtonText}>Copy of the original 5-Day Cycle</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={transfer.importPlan}
+            disabled={!!transfer.busy}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {transfer.busy === 'import' ? 'Importing…' : 'Import a plan someone shared'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -156,7 +171,7 @@ function makeStyles(colors) {
       overflow: 'hidden',
     },
     planSummary: { color: colors.textSecondary, fontSize: 13, marginTop: 4 },
-    planActions: { flexDirection: 'row', gap: 18, marginTop: 12 },
+    planActions: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 10, marginTop: 12 },
     primaryLink: { color: colors.accent, fontSize: 14, fontWeight: '700' },
     link: { color: colors.textSecondary, fontSize: 14, fontWeight: '600' },
     dangerLink: { color: colors.danger, fontSize: 14, fontWeight: '600' },
