@@ -4,6 +4,8 @@ import {
   savePlanState,
   getActivePlan,
   getActiveDayIndex,
+  getActiveVisitId,
+  withActiveDay,
 } from '../storage/plans';
 
 const EMPTY_STATE = { plans: [], activePlanId: null, progress: {} };
@@ -13,6 +15,7 @@ const PlanContext = createContext({
   plans: [],
   activePlan: null,
   activeDayIndex: 0,
+  activeVisitId: null,
   setActiveDayIndex: () => {},
   advanceDay: () => {},
 });
@@ -39,15 +42,14 @@ export function PlanProvider({ children }) {
     return savePlanState(next);
   }, []);
 
+  // Starts a fresh visit of the given day, which clears the checklist of the
+  // day being left (see withActiveDay).
   const setActiveDayIndex = useCallback(
     (index) => {
       const current = stateRef.current;
       const plan = getActivePlan(current);
       if (!plan) return Promise.resolve();
-      return commit({
-        ...current,
-        progress: { ...current.progress, [plan.id]: { activeDayIndex: index } },
-      });
+      return commit(withActiveDay(current, plan.id, index));
     },
     [commit]
   );
@@ -69,6 +71,7 @@ export function PlanProvider({ children }) {
         plans: state.plans,
         activePlan,
         activeDayIndex: getActiveDayIndex(state, activePlan),
+        activeVisitId: getActiveVisitId(state, activePlan),
         setActiveDayIndex,
         advanceDay,
       }}

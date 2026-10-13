@@ -8,26 +8,29 @@ const WEIGHT_STEP = 5;
 const REPS_STEP = 1;
 const DEFAULT_REPS = 12;
 
-export default function ExerciseCard({ exercise, onLog, alwaysShowForm }) {
+// readOnly is for days you're previewing: stats and videos still work, but
+// nothing can be ticked or logged until the day is made active.
+export default function ExerciseCard({ exercise, onLog, alwaysShowForm, readOnly }) {
   const { settings } = useSettings();
   const colors = getColors(settings.themeMode);
 
   if (exercise.logType === 'checkbox') {
-    return <CheckboxCard exercise={exercise} onLog={onLog} colors={colors} />;
+    return <CheckboxCard exercise={exercise} onLog={onLog} colors={colors} readOnly={readOnly} />;
   }
   return (
     <WeightedCard
       exercise={exercise}
       onLog={onLog}
       colors={colors}
-      alwaysShowForm={alwaysShowForm}
+      alwaysShowForm={alwaysShowForm && !readOnly}
+      readOnly={readOnly}
     />
   );
 }
 
 // ---------- Checkbox variant (warm-ups, cooldowns, mobility routines) ----------
 
-function CheckboxCard({ exercise, onLog, colors }) {
+function CheckboxCard({ exercise, onLog, colors, readOnly }) {
   const styles = makeStyles(colors);
   const [videoVisible, setVideoVisible] = useState(false);
 
@@ -51,13 +54,15 @@ function CheckboxCard({ exercise, onLog, colors }) {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.checkbox, exercise.completedToday && styles.checkboxChecked]}
-          onPress={() => onLog(exercise, {})}
-          disabled={exercise.completedToday}
-        >
-          {exercise.completedToday ? <Text style={styles.checkboxMark}>✓</Text> : null}
-        </TouchableOpacity>
+        {!readOnly && (
+          <TouchableOpacity
+            style={[styles.checkbox, exercise.completedToday && styles.checkboxChecked]}
+            onPress={() => onLog(exercise, {})}
+            disabled={exercise.completedToday}
+          >
+            {exercise.completedToday ? <Text style={styles.checkboxMark}>✓</Text> : null}
+          </TouchableOpacity>
+        )}
       </View>
 
       <VideoModal
@@ -75,7 +80,7 @@ function makeDefaultSets(count) {
   return Array.from({ length: count }, () => ({ weight: 0, reps: DEFAULT_REPS }));
 }
 
-function WeightedCard({ exercise, onLog, colors, alwaysShowForm }) {
+function WeightedCard({ exercise, onLog, colors, alwaysShowForm, readOnly }) {
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
   const [videoVisible, setVideoVisible] = useState(false);
@@ -85,7 +90,7 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm }) {
   const [touchedWeight, setTouchedWeight] = useState(Array(exercise.targetSets).fill(false));
   const [touchedReps, setTouchedReps] = useState(Array(exercise.targetSets).fill(false));
 
-  const isOpen = alwaysShowForm || expanded;
+  const isOpen = !readOnly && (alwaysShowForm || expanded);
   const originalSetCount = exercise.targetSets;
 
   const history = exercise.history || [];
@@ -179,7 +184,7 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm }) {
           </Text>
         </View>
 
-        {!alwaysShowForm && (
+        {!alwaysShowForm && !readOnly && (
           <TouchableOpacity style={styles.editButton} onPress={() => setExpanded((v) => !v)}>
             <Text style={styles.editButtonText}>{expanded ? '✕' : '✏️'}</Text>
           </TouchableOpacity>

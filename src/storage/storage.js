@@ -12,18 +12,34 @@ const KEYS = {
 
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
-// A session's "sets" field is an array of { weight, reps } -- one entry
-// per set, independently editable. Returns the exercise merged with any
-// locally-saved state (falls back to the defaults in routines.js on first
-// run), migrating any older history shapes along the way.
-export async function getExerciseState(exercise) {
+// Saved per exercise: { history, maxWeight, today }, where today is
+// { visitId } once it's been ticked or logged during that visit of its day.
+// A session's "sets" field is an array of { weight, reps } -- one entry per
+// set, independently editable.
+//
+// Returns the exercise merged with its saved state. completedToday is only
+// true for ticks made during visitId (the active day's current visit), so a
+// day you've moved on from shows a clean checklist. Pass no visitId for a
+// day you're only previewing.
+export async function getExerciseState(exercise, visitId = null) {
   const raw = await AsyncStorage.getItem(KEYS.EXERCISE_PREFIX + exercise.exerciseId);
-  if (!raw) {
-    return { ...exercise };
-  }
-  const saved = JSON.parse(raw);
-  const migratedHistory = (saved.history || []).map((h) => migrateHistoryEntry(h));
-  return { ...exercise, ...saved, history: migratedHistory };
+  const saved = raw ? JSON.parse(raw) : {};
+  // saved.completedToday (from before visits) is ignored on purpose: those
+  // ticks can't be tied to a visit, so they'd never clear.
+  return {
+    ...exercise,
+    history: (saved.history || []).map((h) => migrateHistoryEntry(h)),
+    maxWeight: saved.maxWeight || 0,
+    today: saved.today || null,
+    completedToday: visitId != null && saved.today?.visitId === visitId,
+  };
+}
+
+async function saveExerciseState(exerciseId, { history, maxWeight, today }) {
+  await AsyncStorage.setItem(
+    KEYS.EXERCISE_PREFIX + exerciseId,
+    JSON.stringify({ history, maxWeight, today })
+  );
 }
 
 // Handles all three history shapes this app has used over time:
@@ -40,8 +56,8 @@ function migrateHistoryEntry(h) {
   return { date: h.date, sets: [{ weight: h.weight || 0, reps: h.reps || 12 }] };
 }
 
-export async function getExercisesForRoutine(routine) {
-  return Promise.all(routine.exercises.map((ex) => getExerciseState(ex)));
+export async function getExercisesForRoutine(routine, visitId = null) {
+  return Promise.all(routine.exercises.map((ex) => getExerciseState(ex, visitId)));
 }
 
 // Logs a new session for a weighted (non-checkbox) exercise.
@@ -52,12 +68,13 @@ export async function getExercisesForRoutine(routine) {
 // moved to the export queue, then the new session is appended. The new
 // session is saved before any network call, so a failed or offline export
 // can't lose it, and the dropped one stays queued until Sheets confirms it.
-export async function logSession(exercise, payload) {
+// visitId is the active day's current visit (see storage/plans.js).
+export async function logSession(exercise, payload, visitId) {
   if (exercise.logType === 'checkbox') {
-    return logCheckboxComplete(exercise);
+    return logCheckboxComplete(exercise, visitId);
   }
 
-  const current = await getExerciseState(exercise);
+  const current = await getExerciseState(exercise, visitId);
   const { sets } = payload;
   const topWeight = Math.max(...sets.map((s) => s.weight));
   const newEntry = { date: new Date().toISOString().slice(0, 10), sets };
@@ -72,19 +89,10 @@ export async function logSession(exercise, payload) {
     history.push(newEntry);
   }
 
-  const maxWeight = Math.max(current.maxWeight || 0, topWeight);
+  const maxWeight = Math.max(current.maxWeight, topWeight);
+  const today = { visitId };
 
-  const updated = {
-    ...current,
-    history,
-    maxWeight,
-    completedToday: true,
-  };
-
-  await AsyncStorage.setItem(
-    KEYS.EXERCISE_PREFIX + exercise.exerciseId,
-    JSON.stringify({ history, maxWeight, completedToday: true })
-  );
+  await saveExerciseState(exercise.exerciseId, { history, maxWeight, today });
 
   if (dropped) {
     const droppedSets = dropped.sets || [];
@@ -100,38 +108,16 @@ export async function logSession(exercise, payload) {
     flushPendingExports(); // fire-and-forget; anything unsent retries on next launch
   }
 
-  return updated;
+  return { ...current, history, maxWeight, today, completedToday: true };
 }
 
 // Checkbox-type exercises (warm-ups, cooldowns, mobility routines) just
 // need a "done today" toggle -- no weight/rep tracking.
-export async function logCheckboxComplete(exercise) {
-  const current = await getExerciseState(exercise);
-  const updated = { ...current, completedToday: true };
-  await AsyncStorage.setItem(
-    KEYS.EXERCISE_PREFIX + exercise.exerciseId,
-    JSON.stringify({
-      history: current.history || [],
-      maxWeight: current.maxWeight || 0,
-      completedToday: true,
-    })
-  );
-  return updated;
-}
-
-// Clears the "completed today" checkmark on all exercises in a routine.
-// Call this after advancing to the next day so the checklist resets.
-export async function resetCompletionForRoutine(routine) {
-  await Promise.all(
-    routine.exercises.map(async (ex) => {
-      const raw = await AsyncStorage.getItem(KEYS.EXERCISE_PREFIX + ex.exerciseId);
-      const saved = raw ? JSON.parse(raw) : {};
-      await AsyncStorage.setItem(
-        KEYS.EXERCISE_PREFIX + ex.exerciseId,
-        JSON.stringify({ ...saved, completedToday: false })
-      );
-    })
-  );
+export async function logCheckboxComplete(exercise, visitId) {
+  const current = await getExerciseState(exercise, visitId);
+  const today = { visitId };
+  await saveExerciseState(exercise.exerciseId, { ...current, today });
+  return { ...current, today, completedToday: true };
 }
 
 // ---------- Export pipeline ----------

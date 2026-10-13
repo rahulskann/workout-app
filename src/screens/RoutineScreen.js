@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  getExercisesForRoutine,
-  logSession,
-  resetCompletionForRoutine,
-  flushPendingExports,
-} from '../storage/storage';
+import { getExercisesForRoutine, logSession, flushPendingExports } from '../storage/storage';
 import ExerciseCard from '../components/ExerciseCard';
 import DaySelectorBar from '../components/DaySelectorBar';
 import { useSettings } from '../context/SettingsContext';
@@ -18,7 +13,8 @@ export default function RoutineScreen({ navigation }) {
   const colors = getColors(settings.themeMode);
   const styles = makeStyles(colors);
   const insets = useSafeAreaInsets();
-  const { loaded, activePlan, activeDayIndex, setActiveDayIndex, advanceDay } = usePlans();
+  const { loaded, activePlan, activeDayIndex, activeVisitId, setActiveDayIndex, advanceDay } =
+    usePlans();
 
   // activeDayIndex = the persisted "current" day (what Finish Day advances from).
   // viewedIndex = whatever day you've tapped to browse; null means "follow the
@@ -33,7 +29,9 @@ export default function RoutineScreen({ navigation }) {
   const shownIndex = Math.min(viewedIndex ?? activeDayIndex, Math.max(days.length - 1, 0));
   const viewedDay = days[shownIndex] || null;
   const isViewingActive = shownIndex === activeDayIndex;
-  const dayKey = viewedDay ? `${activePlan.id}/${viewedDay.id}` : null;
+  // Only the active day's current visit has ticks; previews are look-only.
+  const visitId = isViewingActive ? activeVisitId : null;
+  const dayKey = viewedDay ? `${activePlan.id}/${viewedDay.id}/${visitId}` : null;
   const exercisesReady = loadedFor.key === dayKey;
   const exercises = exercisesReady ? loadedFor.exercises : [];
 
@@ -45,13 +43,13 @@ export default function RoutineScreen({ navigation }) {
   useEffect(() => {
     if (!viewedDay) return undefined;
     let cancelled = false;
-    getExercisesForRoutine(viewedDay).then((list) => {
+    getExercisesForRoutine(viewedDay, visitId).then((list) => {
       if (!cancelled) setLoadedFor({ key: dayKey, exercises: list });
     });
     return () => {
       cancelled = true;
     };
-  }, [viewedDay, dayKey, reloadToken]);
+  }, [viewedDay, visitId, dayKey, reloadToken]);
 
   const reload = () => setReloadToken((t) => t + 1);
 
@@ -59,7 +57,7 @@ export default function RoutineScreen({ navigation }) {
 
   const handleLog = async (exercise, payload) => {
     try {
-      await logSession({ ...exercise, routineName: viewedDay.name }, payload);
+      await logSession({ ...exercise, routineName: viewedDay.name }, payload, activeVisitId);
     } catch (e) {
       Alert.alert("Couldn't save that", e?.message || 'Something went wrong saving this exercise.');
     }
@@ -68,11 +66,11 @@ export default function RoutineScreen({ navigation }) {
 
   const allDone = exercises.length > 0 && exercises.every((e) => e.completedToday);
 
+  // Both of these start a new visit, so the day you leave starts clean next
+  // time while its logged sessions stay in history (and the Sheets queue).
   const handleFinishDay = async () => {
-    await resetCompletionForRoutine(viewedDay);
     await advanceDay();
     setViewedIndex(null);
-    reload();
   };
 
   const handleSetActive = () => {
@@ -150,6 +148,7 @@ export default function RoutineScreen({ navigation }) {
               exercise={ex}
               onLog={handleLog}
               alwaysShowForm={settings.logFormMode === 'always'}
+              readOnly={!isViewingActive}
             />
           ))
         )}

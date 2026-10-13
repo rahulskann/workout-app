@@ -10,7 +10,7 @@ import { makeDefaultPlan } from '../data/defaultPlan';
 export const PLAN_KEYS = {
   PLANS: 'workout:plans',
   ACTIVE_PLAN_ID: 'workout:activePlanId',
-  PROGRESS: 'workout:planProgress', // { [planId]: { activeDayIndex } }
+  PROGRESS: 'workout:planProgress', // { [planId]: { activeDayIndex, visitId } }
 };
 
 // Written by versions from before plans existed.
@@ -32,11 +32,14 @@ export async function loadPlanState() {
   const [rawPlans, activePlanId, rawProgress] = entries.map(([, value]) => value);
 
   if (rawPlans) {
-    return {
+    const saved = {
       plans: JSON.parse(rawPlans),
       activePlanId,
       progress: rawProgress ? JSON.parse(rawProgress) : {},
     };
+    const state = withVisitForActivePlan(saved);
+    if (state !== saved) await savePlanState(state);
+    return state;
   }
 
   const plan = makeDefaultPlan();
@@ -45,14 +48,32 @@ export async function loadPlanState() {
     Number.isInteger(legacyIndex) && legacyIndex >= 0 && legacyIndex < plan.days.length
       ? legacyIndex
       : 0;
-  const state = {
-    plans: [plan],
-    activePlanId: plan.id,
-    progress: { [plan.id]: { activeDayIndex } },
-  };
+  const state = withActiveDay({ plans: [plan], activePlanId: plan.id, progress: {} }, plan.id, activeDayIndex);
   await savePlanState(state);
   await AsyncStorage.removeItem(LEGACY_ROUTINE_INDEX_KEY);
   return state;
+}
+
+// Every time a day becomes active (Finish Day, or Set as Active Day) it gets
+// a new visitId. Ticks are saved against the visit they were made in, so
+// leaving a day clears its checklist while its logged history stays put.
+export function withActiveDay(state, planId, activeDayIndex) {
+  return {
+    ...state,
+    progress: {
+      ...state.progress,
+      [planId]: { activeDayIndex, visitId: newId('visit') },
+    },
+  };
+}
+
+// Gives the active plan a visit if it doesn't have one yet (new plans, and
+// progress saved before visits existed). Returns the same object when
+// nothing needed changing.
+function withVisitForActivePlan(state) {
+  const plan = getActivePlan(state);
+  if (!plan || state.progress[plan.id]?.visitId) return state;
+  return withActiveDay(state, plan.id, state.progress[plan.id]?.activeDayIndex ?? 0);
 }
 
 export async function savePlanState({ plans, activePlanId, progress }) {
@@ -72,4 +93,8 @@ export function getActiveDayIndex(state, plan) {
   if (!plan || plan.days.length === 0) return 0;
   const saved = state.progress[plan.id]?.activeDayIndex ?? 0;
   return Math.min(Math.max(saved, 0), plan.days.length - 1);
+}
+
+export function getActiveVisitId(state, plan) {
+  return (plan && state.progress[plan.id]?.visitId) || null;
 }

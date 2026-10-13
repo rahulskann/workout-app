@@ -49,6 +49,34 @@ it('keeps the last two sessions and tracks the PR', async () => {
   expect(state.maxWeight).toBe(120);
 });
 
+it('only shows ticks for the visit they were made in, but keeps the history', async () => {
+  await logSession(squat, { sets: sets(100) }, 'visit-1');
+
+  expect((await getExerciseState(squat, 'visit-1')).completedToday).toBe(true);
+  const nextVisit = await getExerciseState(squat, 'visit-2');
+  expect(nextVisit.completedToday).toBe(false);
+  expect(nextVisit.history).toHaveLength(1);
+  expect((await getExerciseState(squat)).completedToday).toBe(false); // previewing
+});
+
+it('ticks checkbox exercises for the current visit only', async () => {
+  const warmup = { exerciseId: 'warmup', name: 'Warm Up', logType: 'checkbox' };
+
+  await logSession(warmup, {}, 'visit-1');
+
+  expect((await getExerciseState(warmup, 'visit-1')).completedToday).toBe(true);
+  expect((await getExerciseState(warmup, 'visit-2')).completedToday).toBe(false);
+});
+
+it('ignores ticks saved before visits existed', async () => {
+  await AsyncStorage.setItem(
+    'workout:exercise:barbell_squat',
+    JSON.stringify({ history: [], maxWeight: 0, completedToday: true })
+  );
+
+  expect((await getExerciseState(squat, 'visit-1')).completedToday).toBe(false);
+});
+
 it('allows bodyweight sets at 0 lbs', async () => {
   const state = await logSession(squat, { sets: [{ weight: 0, reps: 15 }] });
 
