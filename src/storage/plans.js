@@ -118,6 +118,30 @@ export function withDefaultPlanRestored(state) {
   return withActivePlan({ ...state, plans }, fresh.id);
 }
 
+// Applies an edit to one plan (see planEdits.js). The plan's active day
+// stays the same day when days are reordered; if it was deleted, the day now
+// in its spot becomes active with a fresh visit.
+export function withPlanEdited(state, planId, edit) {
+  const plan = state.plans.find((p) => p.id === planId);
+  if (!plan) return state;
+  const edited = edit(plan);
+  if (edited === plan) return state;
+
+  const next = { ...state, plans: state.plans.map((p) => (p.id === planId ? edited : p)) };
+  const progress = state.progress[planId];
+  if (!progress) return next;
+
+  const activeDayId = plan.days[getActiveDayIndex(state, plan)]?.id;
+  if (!activeDayId && edited.days.length === 0) return next; // still no days
+  const newIndex = edited.days.findIndex((d) => d.id === activeDayId);
+  if (newIndex >= 0) {
+    if (newIndex === progress.activeDayIndex) return next;
+    return { ...next, progress: { ...next.progress, [planId]: { ...progress, activeDayIndex: newIndex } } };
+  }
+  const clamped = Math.min(progress.activeDayIndex, Math.max(edited.days.length - 1, 0));
+  return withActiveDay(next, planId, clamped);
+}
+
 export function blankPlan(name = 'My Plan') {
   return { id: newId('plan'), name, days: [] };
 }

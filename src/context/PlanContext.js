@@ -10,6 +10,7 @@ import {
   withPlanAdded,
   withPlanRemoved,
   withDefaultPlanRestored,
+  withPlanEdited,
   blankPlan,
   copyPlan,
 } from '../storage/plans';
@@ -46,6 +47,7 @@ const PlanContext = createContext({
   createCopyOfDefaultPlan: () => {},
   duplicatePlan: () => {},
   deletePlan: () => {},
+  editPlan: () => {},
 });
 
 export function PlanProvider({ children }) {
@@ -67,6 +69,7 @@ export function PlanProvider({ children }) {
 
   // Applies a change to the plan state, saves it, then commits whatever was
   // logged during visits the change ended (switching day or plan, deleting).
+  // Plain edits like renames don't end a visit, so they skip that step.
   const apply = useCallback(async (change) => {
     const previous = stateRef.current;
     const next = change(previous);
@@ -74,7 +77,12 @@ export function PlanProvider({ children }) {
     stateRef.current = next;
     setState(next);
     await savePlanState(next);
-    await finishEndedVisits(next, previous);
+    const visitEnded =
+      getActiveVisitId(previous, getActivePlan(previous)) !==
+      getActiveVisitId(next, getActivePlan(next));
+    if (visitEnded || next.plans.length < previous.plans.length) {
+      await finishEndedVisits(next, previous);
+    }
   }, []);
 
   // Starts a fresh visit of the given day, which clears the checklist of the
@@ -126,6 +134,12 @@ export function PlanProvider({ children }) {
 
   const deletePlan = useCallback((planId) => apply((s) => withPlanRemoved(s, planId)), [apply]);
 
+  // edit is one of the plan transforms in storage/planEdits.js.
+  const editPlan = useCallback(
+    (planId, edit) => apply((s) => withPlanEdited(s, planId, edit)),
+    [apply]
+  );
+
   const activePlan = getActivePlan(state);
 
   return (
@@ -144,6 +158,7 @@ export function PlanProvider({ children }) {
         createCopyOfDefaultPlan,
         duplicatePlan,
         deletePlan,
+        editPlan,
       }}
     >
       {children}

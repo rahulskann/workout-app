@@ -65,6 +65,9 @@ export default function RoutineScreen({ navigation }) {
 
   const handleSelectDay = (idx) => setViewedIndex(idx === activeDayIndex ? null : idx);
 
+  const openDayEditor = () =>
+    navigation.navigate('DayEditor', { planId: activePlan.id, dayId: viewedDay.id });
+
   const handleLog = async (exercise, payload) => {
     try {
       await logSession({ ...exercise, routineName: viewedDay.name }, payload, activeVisitId);
@@ -127,8 +130,11 @@ export default function RoutineScreen({ navigation }) {
           </TouchableOpacity>
         </View>
         <Text style={styles.empty}>This plan doesn't have any days yet.</Text>
-        <TouchableOpacity style={styles.emptyButton} onPress={() => navigation.navigate('Plans')}>
-          <Text style={styles.emptyButtonText}>Open Plans</Text>
+        <TouchableOpacity
+          style={styles.emptyButton}
+          onPress={() => navigation.navigate('PlanEditor', { planId: activePlan.id })}
+        >
+          <Text style={styles.emptyButtonText}>Add days</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -159,13 +165,23 @@ export default function RoutineScreen({ navigation }) {
         colors={colors}
       />
 
-      <Text style={styles.headerSub}>
-        {exercises.filter((e) => e.completedToday).length}/{exercises.length} logged
-      </Text>
+      <View style={styles.subRow}>
+        <Text style={styles.headerSub}>
+          {exercises.filter((e) => e.completedToday).length}/{exercises.length} logged
+        </Text>
+        <TouchableOpacity onPress={openDayEditor}>
+          <Text style={styles.editDayLink}>Edit day</Text>
+        </TouchableOpacity>
+      </View>
 
       <ScrollView contentContainerStyle={[styles.list, { paddingBottom: 100 + insets.bottom }]}>
         {!exercisesReady ? null : exercises.length === 0 ? (
-          <Text style={styles.empty}>No exercises added for this day yet.</Text>
+          <>
+            <Text style={styles.empty}>No exercises added for this day yet.</Text>
+            <TouchableOpacity style={styles.emptyButton} onPress={openDayEditor}>
+              <Text style={styles.emptyButtonText}>Add exercises</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           exercises.map((ex) => (
             <ExerciseCard
@@ -229,7 +245,15 @@ function makeStyles(colors) {
     previewTag: { color: colors.accent, fontSize: 12, fontWeight: '600', marginTop: 4 },
     settingsButton: { padding: 6 },
     settingsIcon: { fontSize: 20 },
-    headerSub: { color: colors.textSecondary, paddingHorizontal: 20, marginTop: 10 },
+    subRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      marginTop: 10,
+    },
+    headerSub: { color: colors.textSecondary },
+    editDayLink: { color: colors.accent, fontWeight: '600' },
     list: { padding: 20, paddingBottom: 100 },
     empty: { color: colors.textSecondary, textAlign: 'center', marginTop: 40 },
     emptyButton: {

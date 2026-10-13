@@ -9,6 +9,9 @@ import { getColors } from './src/theme/colors';
 import RoutineScreen from './src/screens/RoutineScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import PlansScreen from './src/screens/PlansScreen';
+import PlanEditorScreen from './src/screens/PlanEditorScreen';
+import DayEditorScreen from './src/screens/DayEditorScreen';
+import ExerciseEditorScreen from './src/screens/ExerciseEditorScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 
 const Stack = createNativeStackNavigator();
@@ -46,6 +49,9 @@ function Root() {
             <Stack.Screen name="Routine" component={RoutineScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="Plans" component={PlansScreen} />
+            <Stack.Screen name="PlanEditor" component={PlanEditorScreen} />
+            <Stack.Screen name="DayEditor" component={DayEditorScreen} />
+            <Stack.Screen name="ExerciseEditor" component={ExerciseEditorScreen} />
           </>
         )}
       </Stack.Navigator>

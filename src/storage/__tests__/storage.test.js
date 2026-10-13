@@ -9,9 +9,6 @@ import {
 } from '../storage';
 import { SETTINGS_KEY } from '../../constants/storageKeys';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
-);
 jest.mock('../../services/googleAuth', () => ({ getFreshAccessToken: jest.fn() }));
 
 const squat = { exerciseId: 'barbell_squat', name: 'Barbell Squat', targetSets: 3, routineName: 'Day 1' };

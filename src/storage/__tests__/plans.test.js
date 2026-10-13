@@ -15,10 +15,6 @@ import {
 } from '../plans';
 import { DEFAULT_PLAN_ID, makeDefaultPlan } from '../../data/defaultPlan';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
-);
-
 beforeEach(async () => {
   await AsyncStorage.clear();
 });

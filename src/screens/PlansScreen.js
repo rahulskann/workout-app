@@ -75,6 +75,11 @@ export default function PlansScreen({ navigation }) {
               </View>
               <Text style={styles.planSummary}>{planSummary(plan)}</Text>
               <View style={styles.planActions}>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('PlanEditor', { planId: plan.id })}
+                >
+                  <Text style={styles.primaryLink}>Edit</Text>
+                </TouchableOpacity>
                 {!isActive && (
                   <TouchableOpacity onPress={() => setActivePlan(plan.id)}>
                     <Text style={styles.primaryLink}>Use this plan</Text>
