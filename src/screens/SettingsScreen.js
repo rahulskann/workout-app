@@ -11,12 +11,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSettings } from '../context/SettingsContext';
+import { usePlans } from '../context/PlanContext';
 import { getColors } from '../theme/colors';
 import { signInWithGoogle, signOutGoogle, getFreshAccessToken } from '../services/googleAuth';
 import { createWorkoutSpreadsheet } from '../services/googleSheets';
 
 export default function SettingsScreen({ navigation }) {
   const { settings, updateSettings } = useSettings();
+  const { activePlan } = usePlans();
   const colors = getColors(settings.themeMode);
   const styles = makeStyles(colors);
 
@@ -80,6 +82,17 @@ export default function SettingsScreen({ navigation }) {
             <Text style={styles.backButtonText}>‹ Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Settings</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Plans</Text>
+          <Text style={styles.sectionSub}>
+            Active plan: {activePlan?.name || 'none'}. Switch plans, start a new one, or reset the
+            5-Day Cycle.
+          </Text>
+          <TouchableOpacity style={styles.saveButton} onPress={() => navigation.navigate('Plans')}>
+            <Text style={styles.saveButtonText}>Manage Plans</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Google Sheets sign-in */}

@@ -30,6 +30,11 @@ export default function RoutineScreen({ navigation }) {
   const [loadedFor, setLoadedFor] = useState({ key: null, exercises: [] });
   const [reloadToken, setReloadToken] = useState(0);
 
+  // A different plan has different days, so stop browsing the old one.
+  useEffect(() => {
+    setViewedIndex(null);
+  }, [activePlan?.id]);
+
   const days = activePlan?.days || [];
   const shownIndex = Math.min(viewedIndex ?? activeDayIndex, Math.max(days.length - 1, 0));
   const viewedDay = days[shownIndex] || null;
@@ -122,6 +127,9 @@ export default function RoutineScreen({ navigation }) {
           </TouchableOpacity>
         </View>
         <Text style={styles.empty}>This plan doesn't have any days yet.</Text>
+        <TouchableOpacity style={styles.emptyButton} onPress={() => navigation.navigate('Plans')}>
+          <Text style={styles.emptyButtonText}>Open Plans</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -132,6 +140,9 @@ export default function RoutineScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={{ flexShrink: 1 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Plans')}>
+            <Text style={styles.planName}>{activePlan.name} ›</Text>
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>{viewedDay.name}</Text>
           {!isViewingActive && <Text style={styles.previewTag}>Previewing · not your active day</Text>}
         </View>
@@ -213,6 +224,7 @@ function makeStyles(colors) {
       paddingTop: 16,
       paddingBottom: 4,
     },
+    planName: { color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 2 },
     headerTitle: { color: colors.textPrimary, fontSize: 24, fontWeight: '700' },
     previewTag: { color: colors.accent, fontSize: 12, fontWeight: '600', marginTop: 4 },
     settingsButton: { padding: 6 },
@@ -220,6 +232,15 @@ function makeStyles(colors) {
     headerSub: { color: colors.textSecondary, paddingHorizontal: 20, marginTop: 10 },
     list: { padding: 20, paddingBottom: 100 },
     empty: { color: colors.textSecondary, textAlign: 'center', marginTop: 40 },
+    emptyButton: {
+      alignSelf: 'center',
+      marginTop: 16,
+      backgroundColor: colors.accent,
+      borderRadius: 10,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+    },
+    emptyButtonText: { color: '#0A0A0A', fontWeight: '700' },
     finishButton: {
       position: 'absolute',
       bottom: 20,

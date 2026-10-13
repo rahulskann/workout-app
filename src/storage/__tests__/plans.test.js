@@ -5,6 +5,12 @@ import {
   getActiveDayIndex,
   getActiveVisitId,
   withActiveDay,
+  withActivePlan,
+  withPlanAdded,
+  withPlanRemoved,
+  withDefaultPlanRestored,
+  blankPlan,
+  copyPlan,
   PLAN_KEYS,
 } from '../plans';
 import { DEFAULT_PLAN_ID, makeDefaultPlan } from '../../data/defaultPlan';
@@ -18,7 +24,16 @@ beforeEach(async () => {
 });
 
 describe('loadPlanState', () => {
-  it('creates the built-in 5-Day Cycle on a fresh install and saves it', async () => {
+  it('gives a brand-new install no plans, so the welcome screen shows', async () => {
+    const state = await loadPlanState();
+
+    expect(state.plans).toEqual([]);
+    expect(await AsyncStorage.getItem(PLAN_KEYS.PLANS)).toBeNull();
+  });
+
+  it('gives an install with logged history from before plans the 5-Day Cycle', async () => {
+    await AsyncStorage.setItem('workout:exercise:barbell_squat', JSON.stringify({ history: [] }));
+
     const state = await loadPlanState();
 
     expect(state.plans).toHaveLength(1);
@@ -45,6 +60,7 @@ describe('loadPlanState', () => {
   });
 
   it('starts a visit for the active day and keeps it across launches', async () => {
+    await AsyncStorage.setItem('workout:routineIndex', '0');
     const first = await loadPlanState();
     const second = await loadPlanState();
 
@@ -125,5 +141,83 @@ describe('active plan helpers', () => {
     const state = { plans: [plan], activePlanId: 'p1', progress: { p1: { activeDayIndex: 7 } } };
 
     expect(getActiveDayIndex(state, plan)).toBe(1);
+  });
+});
+
+describe('managing plans', () => {
+  const empty = { plans: [], activePlanId: null, progress: {} };
+
+  it('starting with the 5-Day Cycle adds the built-in plan and makes it active', () => {
+    const state = withDefaultPlanRestored(empty);
+
+    expect(state.plans.map((p) => p.id)).toEqual([DEFAULT_PLAN_ID]);
+    expect(state.activePlanId).toBe(DEFAULT_PLAN_ID);
+    expect(getActiveVisitId(state, state.plans[0])).toBeTruthy();
+  });
+
+  it('a new plan becomes active with its own visit', () => {
+    const start = withDefaultPlanRestored(empty);
+    const blank = blankPlan();
+
+    const state = withPlanAdded(start, blank);
+
+    expect(state.activePlanId).toBe(blank.id);
+    expect(state.progress[blank.id].visitId).toBeTruthy();
+    expect(state.progress[DEFAULT_PLAN_ID]).toEqual(start.progress[DEFAULT_PLAN_ID]);
+  });
+
+  it('switching back to a plan keeps its place in the cycle', () => {
+    let state = withDefaultPlanRestored(empty);
+    state = withActiveDay(state, DEFAULT_PLAN_ID, 3);
+    state = withPlanAdded(state, blankPlan());
+
+    state = withActivePlan(state, DEFAULT_PLAN_ID);
+
+    expect(getActiveDayIndex(state, getActivePlan(state))).toBe(3);
+  });
+
+  it('copies get new IDs everywhere so they keep separate history', () => {
+    const original = makeDefaultPlan();
+    const copy = copyPlan(original);
+
+    const ids = (p) => p.days.flatMap((d) => d.exercises.map((e) => e.exerciseId));
+    expect(copy.name).toBe('Copy of 5-Day Cycle');
+    expect(copy.id).not.toBe(original.id);
+    expect(ids(copy)).toHaveLength(ids(original).length);
+    expect(ids(copy).some((id) => ids(original).includes(id))).toBe(false);
+    expect(copy.days.map((d) => d.name)).toEqual(original.days.map((d) => d.name));
+  });
+
+  it('deleting the active plan switches to the next one', () => {
+    const start = withDefaultPlanRestored(empty);
+    const blank = blankPlan();
+    const state = withPlanRemoved(withPlanAdded(start, blank), blank.id);
+
+    expect(state.plans.map((p) => p.id)).toEqual([DEFAULT_PLAN_ID]);
+    expect(state.activePlanId).toBe(DEFAULT_PLAN_ID);
+    expect(state.progress[blank.id]).toBeUndefined();
+  });
+
+  it('deleting the last plan leaves no active plan (welcome screen)', () => {
+    const state = withPlanRemoved(withDefaultPlanRestored(empty), DEFAULT_PLAN_ID);
+
+    expect(state).toEqual(empty);
+  });
+
+  it('reset replaces edits to the 5-Day Cycle but keeps its place in the cycle', () => {
+    let state = withActiveDay(withDefaultPlanRestored(empty), DEFAULT_PLAN_ID, 2);
+    state = {
+      ...state,
+      plans: state.plans.map((p) => ({ ...p, name: 'Edited', days: p.days.slice(0, 3) })),
+    };
+    state = withPlanAdded(state, blankPlan());
+
+    state = withDefaultPlanRestored(state);
+
+    const restored = getActivePlan(state);
+    expect(restored.id).toBe(DEFAULT_PLAN_ID);
+    expect(restored).toEqual(makeDefaultPlan());
+    expect(state.plans).toHaveLength(2);
+    expect(getActiveDayIndex(state, restored)).toBe(2);
   });
 });

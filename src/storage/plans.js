@@ -15,14 +15,16 @@ export const PLAN_KEYS = {
 
 // Written by versions from before plans existed.
 const LEGACY_ROUTINE_INDEX_KEY = 'workout:routineIndex';
+const LEGACY_EXERCISE_PREFIX = 'workout:exercise:';
 
 export function newId(prefix) {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // Loads plans, which one is active, and where each plan is in its cycle.
-// First run creates the built-in 5-Day Cycle; an install from before plans
-// existed keeps its current day.
+// A brand-new install gets no plans, so the app shows the welcome screen and
+// lets you pick how to start. An install from before plans existed gets the
+// built-in 5-Day Cycle straight away and keeps its current day.
 export async function loadPlanState() {
   const entries = await AsyncStorage.multiGet([
     PLAN_KEYS.PLANS,
@@ -34,12 +36,21 @@ export async function loadPlanState() {
   if (rawPlans) {
     const saved = {
       plans: JSON.parse(rawPlans),
-      activePlanId,
+      activePlanId: activePlanId || null,
       progress: rawProgress ? JSON.parse(rawProgress) : {},
     };
-    const state = withVisitForActivePlan(saved);
+    const plan = getActivePlan(saved);
+    const state = plan ? withActivePlan(saved, plan.id) : saved;
     if (state !== saved) await savePlanState(state);
     return state;
+  }
+
+  const keys = await AsyncStorage.getAllKeys();
+  const hasLegacyData = keys.some(
+    (k) => k === LEGACY_ROUTINE_INDEX_KEY || k.startsWith(LEGACY_EXERCISE_PREFIX)
+  );
+  if (!hasLegacyData) {
+    return { plans: [], activePlanId: null, progress: {} };
   }
 
   const plan = makeDefaultPlan();
@@ -67,13 +78,62 @@ export function withActiveDay(state, planId, activeDayIndex) {
   };
 }
 
-// Gives the active plan a visit if it doesn't have one yet (new plans, and
-// progress saved before visits existed). Returns the same object when
-// nothing needed changing.
-function withVisitForActivePlan(state) {
-  const plan = getActivePlan(state);
-  if (!plan || state.progress[plan.id]?.visitId) return state;
-  return withActiveDay(state, plan.id, state.progress[plan.id]?.activeDayIndex ?? 0);
+// Makes planId the active plan, starting a visit for it if it doesn't have
+// one yet (new plans, and progress saved before visits existed). Returns the
+// same object when nothing needed changing.
+export function withActivePlan(state, planId) {
+  if (state.activePlanId === planId && state.progress[planId]?.visitId) return state;
+  const next = { ...state, activePlanId: planId };
+  if (next.progress[planId]?.visitId) return next;
+  return withActiveDay(next, planId, next.progress[planId]?.activeDayIndex ?? 0);
+}
+
+// Adds a plan and switches to it.
+export function withPlanAdded(state, plan) {
+  return withActivePlan({ ...state, plans: [...state.plans, plan] }, plan.id);
+}
+
+// Removes a plan. If it was the active one, the first remaining plan takes
+// over; with none left the app goes back to the welcome screen. Logged
+// history stays in storage, so restoring the 5-Day Cycle brings it back.
+export function withPlanRemoved(state, planId) {
+  const plans = state.plans.filter((p) => p.id !== planId);
+  const { [planId]: _removed, ...progress } = state.progress;
+  const activePlanId =
+    state.activePlanId === planId || !plans.some((p) => p.id === state.activePlanId)
+      ? plans[0]?.id ?? null
+      : state.activePlanId;
+  const next = { plans, progress, activePlanId };
+  return activePlanId ? withActivePlan(next, activePlanId) : next;
+}
+
+// Puts the original 5-Day Cycle back -- replacing any edits made to it, or
+// re-adding it if it was deleted -- and switches to it.
+export function withDefaultPlanRestored(state) {
+  const fresh = makeDefaultPlan();
+  const exists = state.plans.some((p) => p.id === fresh.id);
+  const plans = exists
+    ? state.plans.map((p) => (p.id === fresh.id ? fresh : p))
+    : [...state.plans, fresh];
+  return withActivePlan({ ...state, plans }, fresh.id);
+}
+
+export function blankPlan(name = 'My Plan') {
+  return { id: newId('plan'), name, days: [] };
+}
+
+// Copies a plan with new IDs throughout, so the copy builds its own history
+// and PRs instead of sharing the original's.
+export function copyPlan(plan, name = `Copy of ${plan.name}`) {
+  return {
+    id: newId('plan'),
+    name,
+    days: plan.days.map((day) => ({
+      ...day,
+      id: newId('day'),
+      exercises: day.exercises.map((ex) => ({ ...ex, exerciseId: newId('ex') })),
+    })),
+  };
 }
 
 export async function savePlanState({ plans, activePlanId, progress }) {
