@@ -19,7 +19,17 @@ export function makeDefaultPlan() {
         targetSets: ex.targetSets,
         logType: ex.logType === 'checkbox' ? 'checkbox' : 'weights',
         videoUri: ex.videoUri || null,
+        videoUrl: ex.videoUrl || null,
       })),
     })),
   };
+}
+
+// exerciseId -> default YouTube link, for exercises that have one.
+export function defaultVideoLinks() {
+  return new Map(
+    ROUTINES.flatMap((r) => r.exercises)
+      .filter((ex) => ex.videoUrl)
+      .map((ex) => [ex.exerciseId, ex.videoUrl])
+  );
 }

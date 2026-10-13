@@ -50,9 +50,11 @@ function CheckboxCard({ exercise, onLog, onUndo, colors, readOnly }) {
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{exercise.name}</Text>
           <View style={styles.metaRow}>
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>{exercise.targetGroup}</Text>
-            </View>
+            {exercise.targetGroup ? (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{exercise.targetGroup}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -207,9 +209,11 @@ function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnl
             {exercise.completedToday ? <Text style={styles.check}>✓</Text> : null}
           </View>
           <View style={styles.metaRow}>
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>{exercise.targetGroup}</Text>
-            </View>
+            {exercise.targetGroup ? (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{exercise.targetGroup}</Text>
+              </View>
+            ) : null}
             <Text style={styles.metaText}>{exercise.targetSets} Sets</Text>
           </View>
           <Text style={styles.statsText}>

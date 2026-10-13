@@ -16,6 +16,7 @@ import { getColors } from '../theme/colors';
 import { makeScreenStyles } from '../theme/screenStyles';
 import { newId } from '../storage/plans';
 import { pickPhoto, pickVideo } from '../services/media';
+import { parseYouTubeUrl, youTubeThumbnail } from '../services/youtube';
 import MediaModal from '../components/MediaModal';
 import {
   DEFAULT_EXERCISE,
@@ -40,6 +41,16 @@ const COMMON_GROUPS = [
 ];
 const MAX_SETS = 10;
 
+function confirmLargeVideo(sizeMb) {
+  const size = sizeMb >= 1024 ? `${(sizeMb / 1024).toFixed(1)} GB` : `${sizeMb} MB`;
+  return new Promise((resolve) =>
+    Alert.alert('Large video', `This video is ${size} and will take that much space on your phone.`, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Keep it', onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) })
+  );
+}
+
 // Add a new exercise to a day (exerciseId null) or edit an existing one.
 // Nothing is saved until you tap Save.
 export default function ExerciseEditorScreen({ navigation, route }) {
@@ -56,14 +67,16 @@ export default function ExerciseEditorScreen({ navigation, route }) {
   const set = (changes) => setForm((f) => ({ ...f, ...changes }));
   const isCheckbox = form.logType === 'checkbox';
   const [busy, setBusy] = useState(null); // 'photo' | 'video' while saving one
-  const [previewing, setPreviewing] = useState(null); // 'photo' | 'video'
+  const [previewing, setPreviewing] = useState(null); // 'photo' | 'video' | 'youtube'
+  const youtube = parseYouTubeUrl(form.videoUrl);
 
   // Media is picked into the form like any other field and only kept if you
   // tap Save; files that end up unused are cleaned up on the next launch.
   const addMedia = async (kind, source) => {
     setBusy(kind);
     try {
-      const uri = kind === 'photo' ? await pickPhoto(source) : await pickVideo(source);
+      const uri =
+        kind === 'photo' ? await pickPhoto(source) : await pickVideo(source, confirmLargeVideo);
       if (uri) set(kind === 'photo' ? { photoUri: uri } : { videoUri: uri });
     } catch (e) {
       Alert.alert(`Couldn't add that ${kind}`, e?.message || 'Something went wrong.');
@@ -80,12 +93,21 @@ export default function ExerciseEditorScreen({ navigation, route }) {
       Alert.alert('Name needed', 'Give the exercise a name first.');
       return;
     }
+    const videoUrl = (form.videoUrl || '').trim();
+    if (videoUrl && !youtube) {
+      Alert.alert(
+        "That link didn't work",
+        'Paste a link to a single YouTube video, like youtube.com/watch?v=… or youtu.be/…'
+      );
+      return;
+    }
     const fields = {
       name,
       targetGroup: (form.targetGroup || '').trim(),
       logType: form.logType,
       photoUri: form.photoUri || null,
       videoUri: form.videoUri || null,
+      videoUrl: videoUrl || null,
       // Checkbox exercises are a single tick, so they're always 1 set.
       targetSets: isCheckbox ? 1 : form.targetSets,
     };
@@ -254,8 +276,37 @@ export default function ExerciseEditorScreen({ navigation, route }) {
           />
         </View>
         <Text style={styles.hint}>
-          A short clip of the movement plays on a loop when you tap the exercise's picture.
-          Recording stops at 60 seconds.
+          Plays on a loop when you tap the exercise's picture. Recording stops at 10 minutes;
+          long videos take a lot of space, so for full routines a YouTube link may be better.
+        </Text>
+
+        <Text style={styles.label}>YouTube link (optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.videoUrl || ''}
+          onChangeText={(videoUrl) => set({ videoUrl })}
+          placeholder="https://youtu.be/…"
+          placeholderTextColor={colors.textSecondary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+        {youtube ? (
+          <View style={[local.mediaRow, { marginTop: 10 }]}>
+            <TouchableOpacity onPress={() => setPreviewing('youtube')}>
+              <Image source={{ uri: youTubeThumbnail(youtube) }} style={local.youtubeThumb} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => set({ videoUrl: '' })}>
+              <Text style={local.removeText}>Remove link</Text>
+            </TouchableOpacity>
+          </View>
+        ) : form.videoUrl ? (
+          <Text style={local.linkError}>Not a YouTube video link yet.</Text>
+        ) : null}
+        <Text style={styles.hint}>
+          Paste a link from the YouTube app (Share → Copy link). Links with a start time
+          (…?t=90) start from that point. Settings → YouTube Videos picks whether it opens in
+          the YouTube app or plays here.
         </Text>
 
         <TouchableOpacity style={styles.primaryButton} onPress={handleSave} disabled={busy != null}>
@@ -274,6 +325,7 @@ export default function ExerciseEditorScreen({ navigation, route }) {
         onClose={() => setPreviewing(null)}
         photoUri={previewing === 'photo' ? form.photoUri : null}
         videoUri={previewing === 'video' ? form.videoUri : null}
+        videoUrl={previewing === 'youtube' ? form.videoUrl : null}
       />
     </SafeAreaView>
   );
@@ -347,6 +399,8 @@ function makeStyles(colors) {
     mediaRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 10 },
     photo: { width: 96, height: 96, borderRadius: 12, backgroundColor: colors.card },
     removeText: { color: colors.danger, fontWeight: '600' },
+    youtubeThumb: { width: 128, height: 72, borderRadius: 10, backgroundColor: colors.card },
+    linkError: { color: colors.danger, fontSize: 12, marginTop: 6 },
     videoChip: {
       paddingHorizontal: 14,
       paddingVertical: 10,

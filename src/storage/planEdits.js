@@ -12,6 +12,7 @@ export const DEFAULT_EXERCISE = {
   logType: 'weights',
   videoUri: null, // a video file saved on the phone (see services/media.js)
   photoUri: null, // a photo of the machine, also saved on the phone
+  videoUrl: null, // a YouTube link (see services/youtube.js)
 };
 
 export function renamePlan(plan, name) {

@@ -5,6 +5,7 @@ import { SETTINGS_KEY } from '../constants/storageKeys';
 const defaultSettings = {
   themeMode: 'dark', // 'dark' | 'light'
   logFormMode: 'expand', // 'expand' | 'always'
+  youtubePlayback: 'app', // 'app' (open the YouTube app) | 'inapp' (embedded player)
   sheetsWebhookUrl: '', // manual fallback path
   googleAccountEmail: '', // display only -- the actual token lives in SecureStore
   googleSheetsSpreadsheetId: '',

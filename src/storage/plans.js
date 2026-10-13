@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { makeDefaultPlan, DEFAULT_PLAN_ID } from '../data/defaultPlan';
+import { makeDefaultPlan, defaultVideoLinks, DEFAULT_PLAN_ID } from '../data/defaultPlan';
 
 // Plan shape:
 //   { id, name, days: [{ id, name, exercises: [exercise] }] }
 // exercise:
 //   { exerciseId, name, targetGroup, targetSets, logType: 'weights' | 'checkbox',
-//     videoUri, photoUri }
+//     videoUri, photoUri, videoUrl }
 // exerciseId is the storage key for logged history (see storage.js), so it
 // must be unique across every plan, not just within one.
 export const PLAN_KEYS = {
@@ -40,8 +40,9 @@ export async function loadPlanState() {
       activePlanId: activePlanId || null,
       progress: rawProgress ? JSON.parse(rawProgress) : {},
     };
-    const plan = getActivePlan(saved);
-    const state = plan ? withActivePlan(saved, plan.id) : saved;
+    const withLinks = withDefaultVideoLinks(saved);
+    const plan = getActivePlan(withLinks);
+    const state = plan ? withActivePlan(withLinks, plan.id) : withLinks;
     if (state !== saved) await savePlanState(state);
     return state;
   }
@@ -77,6 +78,31 @@ export function withActiveDay(state, planId, activeDayIndex) {
       [planId]: { activeDayIndex, visitId: newId('visit') },
     },
   };
+}
+
+// Gives the built-in 5-Day Cycle's exercises their default YouTube links on
+// phones that saved the plan before the links existed. Only exercises that
+// have never had a videoUrl at all are filled in: a link you removed is
+// saved as null and stays removed, and one you changed is left alone.
+// Returns the same object when nothing needed changing.
+export function withDefaultVideoLinks(state) {
+  const links = defaultVideoLinks();
+  let changed = false;
+  const plans = state.plans.map((plan) => {
+    if (plan.id !== DEFAULT_PLAN_ID) return plan;
+    return {
+      ...plan,
+      days: plan.days.map((day) => ({
+        ...day,
+        exercises: day.exercises.map((ex) => {
+          if ('videoUrl' in ex) return ex;
+          changed = true;
+          return { ...ex, videoUrl: links.get(ex.exerciseId) || null };
+        }),
+      })),
+    };
+  });
+  return changed ? { ...state, plans } : state;
 }
 
 // Makes planId the active plan, starting a visit for it if it doesn't have
@@ -121,7 +147,7 @@ export function withDefaultPlanRestored(state) {
   return withActivePlan({ ...state, plans }, fresh.id);
 }
 
-const MEDIA_FIELDS = ['photoUri', 'videoUri'];
+const MEDIA_FIELDS = ['photoUri', 'videoUri', 'videoUrl'];
 
 function withMediaFrom(plan, source) {
   if (!source) return plan;

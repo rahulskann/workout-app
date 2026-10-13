@@ -196,6 +196,30 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
 
+        {/* YouTube playback */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>YouTube Videos</Text>
+          <Text style={styles.sectionSub}>
+            How exercise videos from YouTube play. Playing inside this app doesn't work for every
+            video (some owners block it, and it needs a connection); when it fails, use the
+            "Open in YouTube" button under the player.
+          </Text>
+          <View style={styles.toggleRow}>
+            <ToggleOption
+              label="YouTube app"
+              active={settings.youtubePlayback !== 'inapp'}
+              colors={colors}
+              onPress={() => updateSettings({ youtubePlayback: 'app' })}
+            />
+            <ToggleOption
+              label="In this app"
+              active={settings.youtubePlayback === 'inapp'}
+              colors={colors}
+              onPress={() => updateSettings({ youtubePlayback: 'inapp' })}
+            />
+          </View>
+        </View>
+
         {/* Log form preference */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Logging Style</Text>

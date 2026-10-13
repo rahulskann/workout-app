@@ -1,30 +1,43 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import MediaModal from './MediaModal';
+import { useSettings } from '../context/SettingsContext';
+import { parseYouTubeUrl, youTubeThumbnail, openInYouTube } from '../services/youtube';
 
 // The square on the left of each exercise card: the machine photo if there
-// is one, otherwise a play icon. A small ▶ badge means there's a video.
-// Tapping opens the media; with nothing attached it's just decoration.
+// is one, else the YouTube video's thumbnail, else a play icon. A small ▶
+// badge means there's a video to watch. Tapping opens the media; with
+// nothing attached it's just decoration.
 export default function ExerciseThumb({ exercise, colors }) {
   const styles = makeStyles(colors);
+  const { settings } = useSettings();
   const [open, setOpen] = useState(false);
-  const { photoUri, videoUri } = exercise;
-  const hasMedia = Boolean(photoUri || videoUri);
+  const { photoUri, videoUri, videoUrl } = exercise;
+  const youtube = parseYouTubeUrl(videoUrl);
+  const hasVideo = Boolean(videoUri || youtube);
+  const hasMedia = Boolean(photoUri || hasVideo);
+  const image = photoUri || (youtube && youTubeThumbnail(youtube));
+
+  const handlePress = () => {
+    // A YouTube link on its own, set to open in the YouTube app: skip the
+    // viewer and go straight there.
+    if (youtube && !photoUri && !videoUri && settings.youtubePlayback !== 'inapp') {
+      openInYouTube(youtube);
+    } else {
+      setOpen(true);
+    }
+  };
 
   return (
     <>
-      <TouchableOpacity style={styles.thumb} onPress={() => setOpen(true)} disabled={!hasMedia}>
-        {photoUri ? (
-          <>
-            <Image source={{ uri: photoUri }} style={styles.photo} />
-            {videoUri && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>▶</Text>
-              </View>
-            )}
-          </>
-        ) : (
-          <Text style={[styles.icon, !hasMedia && styles.iconEmpty]}>▶</Text>
+      <TouchableOpacity style={styles.thumb} onPress={handlePress} disabled={!hasMedia}>
+        {/* The icon sits underneath, so it still shows if a YouTube thumbnail can't load offline. */}
+        <Text style={[styles.icon, !hasMedia && styles.iconEmpty]}>▶</Text>
+        {image && <Image source={{ uri: image }} style={styles.photo} />}
+        {image && hasVideo && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>▶</Text>
+          </View>
         )}
       </TouchableOpacity>
       {hasMedia && (
@@ -33,6 +46,7 @@ export default function ExerciseThumb({ exercise, colors }) {
           onClose={() => setOpen(false)}
           videoUri={videoUri}
           photoUri={photoUri}
+          videoUrl={videoUrl}
         />
       )}
     </>
@@ -51,7 +65,7 @@ function makeStyles(colors) {
       marginRight: 12,
       overflow: 'hidden',
     },
-    photo: { width: '100%', height: '100%' },
+    photo: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
     icon: { color: colors.accent, fontSize: 16 },
     iconEmpty: { opacity: 0.35 },
     badge: {

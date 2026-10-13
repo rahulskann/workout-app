@@ -1,8 +1,13 @@
-// Your 5-day program (matches the Fittr plan). Edit exercise lists here.
+// The built-in 5-Day Cycle (matches the Fittr plan): what new installs start
+// with and what "Reset 5-Day Cycle" restores. Plans are edited in the app;
+// changes here only reach a phone through a reset or a fresh install --
+// except videoUrl, which is filled in on existing phones too (see
+// withDefaultVideoLinks in storage/plans.js).
 // Each exercise needs a unique exerciseId (used as the storage key), so the
 // same exercise on two days gets a suffix like _day3.
 // logType: 'checkbox' = just tick it off (warm-ups, mobility, holds); anything
 // else logs weight x reps per set.
+// videoUrl: a default YouTube video for the exercise.
 // maxWeight is the starting all-time PR (set to 0 if unknown).
 // history starts empty - it fills in as you log sessions (max 2 entries, FIFO).
 
@@ -18,6 +23,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/FbMI7dqZS1k',
         logType: 'checkbox',
         history: [],
       },
@@ -28,6 +34,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/gyRof2bYhiI',
         logType: 'checkbox',
         history: [],
       },
@@ -119,6 +126,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/tAd1q2PskVs',
         logType: 'checkbox',
         history: [],
       },
@@ -135,6 +143,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/uodkIIcXtRk',
         logType: 'checkbox',
         history: [],
       },
@@ -145,6 +154,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/wCpPDuy0B40',
         logType: 'checkbox',
         history: [],
       },
@@ -248,6 +258,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/OUlBO3g0OIY',
         logType: 'checkbox',
         history: [],
       },
@@ -264,6 +275,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/uodkIIcXtRk',
         logType: 'checkbox',
         history: [],
       },
@@ -367,6 +379,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/OUlBO3g0OIY',
         logType: 'checkbox',
         history: [],
       },
@@ -383,6 +396,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/FbMI7dqZS1k',
         logType: 'checkbox',
         history: [],
       },
@@ -393,6 +407,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/77iX2a1BqOk',
         logType: 'checkbox',
         history: [],
       },
@@ -485,6 +500,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/tAd1q2PskVs',
         logType: 'checkbox',
         history: [],
       },
@@ -501,6 +517,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/uodkIIcXtRk',
         logType: 'checkbox',
         history: [],
       },
@@ -511,6 +528,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/wCpPDuy0B40',
         logType: 'checkbox',
         history: [],
       },
@@ -613,6 +631,7 @@ export const ROUTINES = [
         targetSets: 1,
         maxWeight: 0,
         videoUri: null,
+        videoUrl: 'https://youtu.be/OUlBO3g0OIY',
         logType: 'checkbox',
         history: [],
       },

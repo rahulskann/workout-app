@@ -14,6 +14,7 @@ import {
   PLAN_KEYS,
 } from '../plans';
 import { DEFAULT_PLAN_ID, makeDefaultPlan } from '../../data/defaultPlan';
+import { parseYouTubeUrl } from '../../services/youtube';
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -81,6 +82,36 @@ describe('loadPlanState', () => {
     expect(JSON.parse(await AsyncStorage.getItem(PLAN_KEYS.PROGRESS))).toEqual(state.progress);
   });
 
+  it('adds default video links to a 5-Day Cycle saved before they existed, once', async () => {
+    const { days } = makeDefaultPlan();
+    const stripLinks = (ex) => {
+      const { videoUrl, ...rest } = ex;
+      return rest;
+    };
+    const oldPlan = {
+      id: DEFAULT_PLAN_ID,
+      name: '5-Day Cycle',
+      days: days.map((d) => ({ ...d, exercises: d.exercises.map(stripLinks) })),
+    };
+    // One link the user changed and one they removed, as the editor saves them.
+    oldPlan.days[0].exercises[0].videoUrl = 'https://youtu.be/AAAAAAAAAAA'; // warm-up, changed
+    oldPlan.days[0].exercises[1].videoUrl = null; // hip mobility, removed
+    await AsyncStorage.multiSet([
+      [PLAN_KEYS.PLANS, JSON.stringify([oldPlan])],
+      [PLAN_KEYS.ACTIVE_PLAN_ID, DEFAULT_PLAN_ID],
+      [PLAN_KEYS.PROGRESS, JSON.stringify({ [DEFAULT_PLAN_ID]: { activeDayIndex: 0, visitId: 'v' } })],
+    ]);
+
+    const state = await loadPlanState();
+
+    const byId = new Map(state.plans[0].days.flatMap((d) => d.exercises).map((e) => [e.exerciseId, e]));
+    expect(byId.get('warmup_lower_body').videoUrl).toBe('https://youtu.be/AAAAAAAAAAA');
+    expect(byId.get('hip_mobility').videoUrl).toBeNull();
+    expect(byId.get('cooldown_lower_body').videoUrl).toBe('https://youtu.be/tAd1q2PskVs');
+    expect(byId.get('barbell_squat').videoUrl).toBeNull();
+    expect(JSON.parse(await AsyncStorage.getItem(PLAN_KEYS.PLANS))).toEqual(state.plans);
+  });
+
   it('returns saved plans as-is instead of re-seeding', async () => {
     const custom = { id: 'p1', name: 'Home', days: [] };
     await AsyncStorage.multiSet([
@@ -105,6 +136,16 @@ describe('default plan', () => {
     expect(ids).toHaveLength(62);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain('barbell_squat');
+  });
+
+  it('has default YouTube links for the warm-ups, cool-downs, stretches and mobility', () => {
+    const withLinks = makeDefaultPlan()
+      .days.flatMap((d) => d.exercises)
+      .filter((e) => e.videoUrl);
+
+    expect(withLinks).toHaveLength(14);
+    expect(withLinks.every((e) => parseYouTubeUrl(e.videoUrl))).toBe(true);
+    expect(withLinks.every((e) => e.logType === 'checkbox')).toBe(true);
   });
 
   it('marks every exercise as either weights or checkbox', () => {
