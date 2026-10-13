@@ -4,6 +4,7 @@ import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SettingsProvider, useSettings } from './src/context/SettingsContext';
+import { PlanProvider } from './src/context/PlanContext';
 import { getColors } from './src/theme/colors';
 import RoutineScreen from './src/screens/RoutineScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -44,7 +45,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SettingsProvider>
-        <Root />
+        <PlanProvider>
+          <Root />
+        </PlanProvider>
       </SettingsProvider>
     </SafeAreaProvider>
   );

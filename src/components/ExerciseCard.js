@@ -146,7 +146,8 @@ function WeightedCard({ exercise, onLog, colors, alwaysShowForm }) {
   };
 
   const handleLog = () => {
-    if (sets.length === 0 || sets.some((s) => !s.weight || !s.reps)) return;
+    // 0 lbs is a real value: push-ups, squat jumps, dips etc. are bodyweight.
+    if (sets.length === 0 || sets.some((s) => s.reps < 1)) return;
     onLog(exercise, { sets });
     resetForm();
   };

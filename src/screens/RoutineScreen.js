@@ -1,18 +1,16 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ROUTINES } from '../data/routines';
 import {
-  getRoutineIndex,
   getExercisesForRoutine,
   logSession,
-  advanceRoutine,
-  setRoutineIndex as persistRoutineIndex,
   resetCompletionForRoutine,
+  flushPendingExports,
 } from '../storage/storage';
 import ExerciseCard from '../components/ExerciseCard';
 import DaySelectorBar from '../components/DaySelectorBar';
 import { useSettings } from '../context/SettingsContext';
+import { usePlans } from '../context/PlanContext';
 import { getColors } from '../theme/colors';
 
 export default function RoutineScreen({ navigation }) {
@@ -20,77 +18,98 @@ export default function RoutineScreen({ navigation }) {
   const colors = getColors(settings.themeMode);
   const styles = makeStyles(colors);
   const insets = useSafeAreaInsets();
+  const { loaded, activePlan, activeDayIndex, setActiveDayIndex, advanceDay } = usePlans();
 
-  // activeIndex = the persisted "current" day (what Finish Day advances from).
-  // viewedIndex = whatever day is currently on screen -- browsing doesn't
-  // touch activeIndex at all, so you can look ahead freely.
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [viewedIndex, setViewedIndex] = useState(0);
-  const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // activeDayIndex = the persisted "current" day (what Finish Day advances from).
+  // viewedIndex = whatever day you've tapped to browse; null means "follow the
+  // active day", so browsing ahead never touches your place in the cycle.
+  const [viewedIndex, setViewedIndex] = useState(null);
+  // Exercises are tagged with the day they were loaded for, so switching days
+  // never briefly shows the previous day's list under the new day's name.
+  const [loadedFor, setLoadedFor] = useState({ key: null, exercises: [] });
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const viewedRoutine = ROUTINES[viewedIndex];
-  const isViewingActive = viewedIndex === activeIndex;
+  const days = activePlan?.days || [];
+  const shownIndex = Math.min(viewedIndex ?? activeDayIndex, Math.max(days.length - 1, 0));
+  const viewedDay = days[shownIndex] || null;
+  const isViewingActive = shownIndex === activeDayIndex;
+  const dayKey = viewedDay ? `${activePlan.id}/${viewedDay.id}` : null;
+  const exercisesReady = loadedFor.key === dayKey;
+  const exercises = exercisesReady ? loadedFor.exercises : [];
 
-  const loadExercisesFor = useCallback(async (idx) => {
-    const withState = await getExercisesForRoutine(ROUTINES[idx]);
-    setExercises(withState);
+  // Retry any Sheets exports that couldn't go out last time (e.g. offline).
+  useEffect(() => {
+    flushPendingExports();
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const idx = await getRoutineIndex();
-    setActiveIndex(idx);
-    setViewedIndex(idx);
-    await loadExercisesFor(idx);
-    setLoading(false);
-  }, [loadExercisesFor]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!viewedDay) return undefined;
+    let cancelled = false;
+    getExercisesForRoutine(viewedDay).then((list) => {
+      if (!cancelled) setLoadedFor({ key: dayKey, exercises: list });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewedDay, dayKey, reloadToken]);
 
-  const handleSelectDay = async (idx) => {
-    setViewedIndex(idx);
-    await loadExercisesFor(idx);
-  };
+  const reload = () => setReloadToken((t) => t + 1);
+
+  const handleSelectDay = (idx) => setViewedIndex(idx === activeDayIndex ? null : idx);
 
   const handleLog = async (exercise, payload) => {
-    await logSession({ ...exercise, routineName: viewedRoutine.name }, payload);
-    await loadExercisesFor(viewedIndex);
+    try {
+      await logSession({ ...exercise, routineName: viewedDay.name }, payload);
+    } catch (e) {
+      Alert.alert("Couldn't save that", e?.message || 'Something went wrong saving this exercise.');
+    }
+    reload();
   };
 
   const allDone = exercises.length > 0 && exercises.every((e) => e.completedToday);
 
   const handleFinishDay = async () => {
-    await resetCompletionForRoutine(viewedRoutine);
-    const next = await advanceRoutine();
-    setActiveIndex(next);
-    setViewedIndex(next);
-    await loadExercisesFor(next);
+    await resetCompletionForRoutine(viewedDay);
+    await advanceDay();
+    setViewedIndex(null);
+    reload();
   };
 
   const handleSetActive = () => {
     Alert.alert(
       'Set as active day?',
-      `Make ${viewedRoutine.name} your active day? "Finish Day" will advance from here next time.`,
+      `Make ${viewedDay.name} your active day? "Finish Day" will advance from here next time.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Set Active',
           onPress: async () => {
-            await persistRoutineIndex(viewedIndex);
-            setActiveIndex(viewedIndex);
+            await setActiveDayIndex(shownIndex);
+            setViewedIndex(null);
           },
         },
       ]
     );
   };
 
-  if (loading) {
+  if (!loaded) {
     return (
       <SafeAreaView style={styles.safe}>
         <Text style={styles.loading}>Loading…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!viewedDay) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{activePlan?.name || 'No plan yet'}</Text>
+          <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.settingsIcon}>⚙️</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.empty}>This plan doesn't have any days yet.</Text>
       </SafeAreaView>
     );
   }
@@ -101,7 +120,7 @@ export default function RoutineScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={{ flexShrink: 1 }}>
-          <Text style={styles.headerTitle}>{viewedRoutine.name}</Text>
+          <Text style={styles.headerTitle}>{viewedDay.name}</Text>
           {!isViewingActive && <Text style={styles.previewTag}>Previewing · not your active day</Text>}
         </View>
         <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
@@ -110,9 +129,9 @@ export default function RoutineScreen({ navigation }) {
       </View>
 
       <DaySelectorBar
-        routines={ROUTINES}
-        viewedIndex={viewedIndex}
-        activeIndex={activeIndex}
+        routines={days}
+        viewedIndex={shownIndex}
+        activeIndex={activeDayIndex}
         onSelect={handleSelectDay}
         colors={colors}
       />
@@ -122,10 +141,8 @@ export default function RoutineScreen({ navigation }) {
       </Text>
 
       <ScrollView contentContainerStyle={[styles.list, { paddingBottom: 100 + insets.bottom }]}>
-        {exercises.length === 0 ? (
-          <Text style={styles.empty}>
-            No exercises added for this day yet. Edit src/data/routines.js to fill it in.
-          </Text>
+        {!exercisesReady ? null : exercises.length === 0 ? (
+          <Text style={styles.empty}>No exercises added for this day yet.</Text>
         ) : (
           exercises.map((ex) => (
             <ExerciseCard
@@ -152,7 +169,7 @@ export default function RoutineScreen({ navigation }) {
             >
               <Text style={styles.finishText}>
                 {allDone
-                  ? `Finish Day → ${ROUTINES[(viewedIndex + 1) % ROUTINES.length].name}`
+                  ? `Finish Day → ${days[(shownIndex + 1) % days.length].name}`
                   : 'Log all exercises to finish'}
               </Text>
             </TouchableOpacity>

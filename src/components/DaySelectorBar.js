@@ -16,14 +16,14 @@ export default function DaySelectorBar({ routines, viewedIndex, activeIndex, onS
   if (routines.length <= 6) {
     return (
       <View style={styles.row}>
-        {routines.map((r) => {
-          const selected = r.id === viewedIndex;
-          const isActive = r.id === activeIndex;
+        {routines.map((r, i) => {
+          const selected = i === viewedIndex;
+          const isActive = i === activeIndex;
           return (
             <TouchableOpacity
               key={r.id}
               style={[styles.button, selected && styles.buttonSelected]}
-              onPress={() => onSelect(r.id)}
+              onPress={() => onSelect(i)}
             >
               <Text style={[styles.buttonText, selected && styles.buttonTextSelected]} numberOfLines={1}>
                 {shortLabel(r.name)}
@@ -49,15 +49,15 @@ export default function DaySelectorBar({ routines, viewedIndex, activeIndex, onS
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setDropdownOpen(false)}>
           <View style={styles.dropdownCard}>
             <ScrollView style={{ maxHeight: 320 }}>
-              {routines.map((r) => {
-                const selected = r.id === viewedIndex;
-                const isActive = r.id === activeIndex;
+              {routines.map((r, i) => {
+                const selected = i === viewedIndex;
+                const isActive = i === activeIndex;
                 return (
                   <TouchableOpacity
                     key={r.id}
                     style={[styles.dropdownRow, selected && styles.dropdownRowSelected]}
                     onPress={() => {
-                      onSelect(r.id);
+                      onSelect(i);
                       setDropdownOpen(false);
                     }}
                   >

@@ -1,35 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ROUTINES } from '../data/routines';
 import { SETTINGS_KEY } from '../constants/storageKeys';
 import { getFreshAccessToken } from '../services/googleAuth';
 import { appendRowToSheet } from '../services/googleSheets';
 
+// Which day of the cycle you're on lives with the plans (storage/plans.js);
+// this file only tracks per-exercise history and the Sheets export queue.
 const KEYS = {
-  ROUTINE_INDEX: 'workout:routineIndex',
   EXERCISE_PREFIX: 'workout:exercise:', // + exerciseId
+  PENDING_EXPORTS: 'workout:pendingExports',
 };
-
-// ---------- Routine cycling ----------
-
-export async function getRoutineIndex() {
-  const raw = await AsyncStorage.getItem(KEYS.ROUTINE_INDEX);
-  return raw ? parseInt(raw, 10) : 0;
-}
-
-export async function advanceRoutine() {
-  const current = await getRoutineIndex();
-  const next = (current + 1) % ROUTINES.length;
-  await AsyncStorage.setItem(KEYS.ROUTINE_INDEX, String(next));
-  return next;
-}
-
-// Jumps directly to a chosen day (used by the day picker). Unlike
-// advanceRoutine, this doesn't reset completion state on other days --
-// each day's checklist tracks its own "completedToday" independently.
-export async function setRoutineIndex(index) {
-  await AsyncStorage.setItem(KEYS.ROUTINE_INDEX, String(index));
-  return index;
-}
 
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
@@ -69,8 +48,10 @@ export async function getExercisesForRoutine(routine) {
 // payload: { sets: [{ weight, reps }, ...] } -- one entry per set, in
 // whatever order/count the user ended up with (extra sets allowed).
 // Implements the 2-entry rolling FIFO queue described in the spec: when
-// history is already length 2, the oldest entry (index 0) is exported
-// before being dropped, then the new session is appended.
+// history is already length 2, the oldest entry (index 0) is dropped and
+// moved to the export queue, then the new session is appended. The new
+// session is saved before any network call, so a failed or offline export
+// can't lose it, and the dropped one stays queued until Sheets confirms it.
 export async function logSession(exercise, payload) {
   if (exercise.logType === 'checkbox') {
     return logCheckboxComplete(exercise);
@@ -82,18 +63,10 @@ export async function logSession(exercise, payload) {
   const newEntry = { date: new Date().toISOString().slice(0, 10), sets };
 
   let history = [...(current.history || [])];
+  let dropped = null;
 
   if (history.length === 2) {
-    const dropped = history[0];
-    const droppedSets = dropped.sets || [];
-    await exportSessionToSheets({
-      routineName: exercise.routineName,
-      exerciseId: exercise.exerciseId,
-      exerciseName: exercise.name,
-      date: dropped.date,
-      weight: droppedSets.length ? Math.max(...droppedSets.map((s) => s.weight)) : 0,
-      sets: droppedSets,
-    });
+    dropped = history[0];
     history = [history[1], newEntry];
   } else {
     history.push(newEntry);
@@ -112,6 +85,20 @@ export async function logSession(exercise, payload) {
     KEYS.EXERCISE_PREFIX + exercise.exerciseId,
     JSON.stringify({ history, maxWeight, completedToday: true })
   );
+
+  if (dropped) {
+    const droppedSets = dropped.sets || [];
+    await queueExport({
+      id: `${exercise.exerciseId}:${dropped.date}:${Date.now()}`,
+      routineName: exercise.routineName,
+      exerciseId: exercise.exerciseId,
+      exerciseName: exercise.name,
+      date: dropped.date,
+      weight: droppedSets.length ? Math.max(...droppedSets.map((s) => s.weight)) : 0,
+      sets: droppedSets,
+    });
+    flushPendingExports(); // fire-and-forget; anything unsent retries on next launch
+  }
 
   return updated;
 }
@@ -192,5 +179,74 @@ export async function exportSessionToSheets(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  return { ok: res.status === 200 };
+  return { ok: res.ok };
+}
+
+// ---------- Export queue ----------
+// Sessions that rolled out of local history wait here until a destination
+// confirms them, so going offline at the gym (or not having set up Sheets
+// yet) never loses data. Every read-modify-write of the queue goes through
+// withQueueLock so a flush finishing can't overwrite an item queued mid-flush.
+
+let queueLock = Promise.resolve();
+
+function withQueueLock(fn) {
+  const run = queueLock.then(fn, fn);
+  queueLock = run.catch(() => {});
+  return run;
+}
+
+async function readPendingExports() {
+  const raw = await AsyncStorage.getItem(KEYS.PENDING_EXPORTS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+function queueExport(payload) {
+  return withQueueLock(async () => {
+    const queue = await readPendingExports();
+    queue.push(payload);
+    await AsyncStorage.setItem(KEYS.PENDING_EXPORTS, JSON.stringify(queue));
+  });
+}
+
+export function getPendingExports() {
+  return withQueueLock(readPendingExports);
+}
+
+let flushing = null;
+
+// Sends queued sessions oldest-first and stops at the first one that doesn't
+// go through, so rows land in the sheet in order. Safe to call often:
+// overlapping calls share the flush already in progress.
+export function flushPendingExports() {
+  if (!flushing) {
+    flushing = doFlush()
+      .catch(() => {})
+      .finally(() => {
+        flushing = null;
+      });
+  }
+  return flushing;
+}
+
+async function doFlush() {
+  const queue = await withQueueLock(readPendingExports);
+  const sent = new Set();
+  for (const payload of queue) {
+    try {
+      const res = await exportSessionToSheets(payload);
+      if (!res.ok || res.stub) break; // rejected, or nowhere to send it yet
+      sent.add(payload.id);
+    } catch (e) {
+      break; // offline -- try again later
+    }
+  }
+  if (sent.size === 0) return;
+  await withQueueLock(async () => {
+    const latest = await readPendingExports();
+    await AsyncStorage.setItem(
+      KEYS.PENDING_EXPORTS,
+      JSON.stringify(latest.filter((p) => !sent.has(p.id)))
+    );
+  });
 }
