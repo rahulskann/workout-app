@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Keyboard } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
 import { getColors } from '../theme/colors';
+import { cleanReps, cleanWeight } from '../utils/numbers';
 import ExerciseThumb from './ExerciseThumb';
+import NumberField from './NumberField';
 import TimedCard from './TimedCard';
 import { makeStyles } from './cardStyles';
 
-const WEIGHT_STEP = 5;
+const WEIGHT_STEP = 2.5;
 const REPS_STEP = 1;
 const DEFAULT_REPS = 12;
 
@@ -145,37 +147,28 @@ function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnl
     setExpanded(true);
   };
 
-  const nudgeWeight = (idx, direction) => {
+  // Buttons and typing both go through here: a change to Set 1 carries to
+  // every set not yet changed on its own; a change to any other set marks it.
+  const updateSet = (field, idx, compute) => {
+    const touched = field === 'weight' ? touchedWeight : touchedReps;
     if (idx === 0) {
       setSets((prev) => {
-        const next = Math.max(0, prev[0].weight + direction * WEIGHT_STEP);
-        return prev.map((s, i) => (i === 0 || !touchedWeight[i] ? { ...s, weight: next } : s));
+        const next = compute(prev[0][field]);
+        return prev.map((s, i) => (i === 0 || !touched[i] ? { ...s, [field]: next } : s));
       });
     } else {
-      setSets((prev) =>
-        prev.map((s, i) =>
-          i === idx ? { ...s, weight: Math.max(0, s.weight + direction * WEIGHT_STEP) } : s
-        )
-      );
-      setTouchedWeight((prev) => prev.map((t, i) => (i === idx ? true : t)));
+      setSets((prev) => prev.map((s, i) => (i === idx ? { ...s, [field]: compute(s[field]) } : s)));
+      const setTouched = field === 'weight' ? setTouchedWeight : setTouchedReps;
+      setTouched((prev) => prev.map((t, i) => (i === idx ? true : t)));
     }
   };
 
-  const nudgeReps = (idx, direction) => {
-    if (idx === 0) {
-      setSets((prev) => {
-        const next = Math.max(1, prev[0].reps + direction * REPS_STEP);
-        return prev.map((s, i) => (i === 0 || !touchedReps[i] ? { ...s, reps: next } : s));
-      });
-    } else {
-      setSets((prev) =>
-        prev.map((s, i) =>
-          i === idx ? { ...s, reps: Math.max(1, s.reps + direction * REPS_STEP) } : s
-        )
-      );
-      setTouchedReps((prev) => prev.map((t, i) => (i === idx ? true : t)));
-    }
-  };
+  const nudgeWeight = (idx, direction) =>
+    updateSet('weight', idx, (w) => cleanWeight(w + direction * WEIGHT_STEP));
+  const nudgeReps = (idx, direction) =>
+    updateSet('reps', idx, (r) => cleanReps(r + direction * REPS_STEP));
+  const typeWeight = (idx, value) => updateSet('weight', idx, () => cleanWeight(value));
+  const typeReps = (idx, value) => updateSet('reps', idx, () => cleanReps(value));
 
   const addSet = () => {
     setSets((prev) => [...prev, { weight: prev[0]?.weight ?? 0, reps: prev[0]?.reps ?? DEFAULT_REPS }]);
@@ -192,6 +185,7 @@ function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnl
   const handleLog = () => {
     // 0 lbs is a real value: push-ups, squat jumps, dips etc. are bodyweight.
     if (sets.length === 0 || sets.some((s) => s.reps < 1)) return;
+    Keyboard.dismiss();
     onLog(exercise, { sets });
     setExpanded(false);
   };
@@ -261,21 +255,32 @@ function WeightedCard({ exercise, onLog, onUndo, colors, alwaysShowForm, readOnl
               </View>
               <View style={styles.setRow}>
                 <View style={styles.stepperGroup}>
-                  <Text style={styles.stepperMiniLabel}>Reps</Text>
+                  <Text style={styles.stepperMiniLabel}>Reps:</Text>
                   <TouchableOpacity style={styles.stepButton} onPress={() => nudgeReps(i, -1)}>
                     <Text style={styles.stepButtonText}>−</Text>
                   </TouchableOpacity>
-                  <Text style={styles.stepperValue}>{s.reps}</Text>
+                  <NumberField
+                    style={[styles.stepperValue, styles.repsValue]}
+                    value={s.reps}
+                    onChange={(n) => typeReps(i, n)}
+                    placeholderTextColor={colors.textSecondary}
+                  />
                   <TouchableOpacity style={styles.stepButton} onPress={() => nudgeReps(i, 1)}>
                     <Text style={styles.stepButtonText}>+</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.stepperGroup}>
-                  <Text style={styles.stepperMiniLabel}>Weight</Text>
+                  <Text style={styles.stepperMiniLabel}>Lbs:</Text>
                   <TouchableOpacity style={styles.stepButton} onPress={() => nudgeWeight(i, -1)}>
                     <Text style={styles.stepButtonText}>−</Text>
                   </TouchableOpacity>
-                  <Text style={styles.stepperValue}>{s.weight} lbs</Text>
+                  <NumberField
+                    style={[styles.stepperValue, styles.weightValue]}
+                    value={s.weight}
+                    decimal
+                    onChange={(n) => typeWeight(i, n)}
+                    placeholderTextColor={colors.textSecondary}
+                  />
                   <TouchableOpacity style={styles.stepButton} onPress={() => nudgeWeight(i, 1)}>
                     <Text style={styles.stepButtonText}>+</Text>
                   </TouchableOpacity>

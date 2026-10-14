@@ -174,7 +174,11 @@ export default function RoutineScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: 100 + insets.bottom }]}>
+      {/* "handled" lets −/+ and Log work in one tap while the keypad is open. */}
+      <ScrollView
+        contentContainerStyle={[styles.list, { paddingBottom: 100 + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {!exercisesReady ? null : exercises.length === 0 ? (
           <>
             <Text style={styles.empty}>No exercises added for this day yet.</Text>

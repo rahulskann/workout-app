@@ -73,7 +73,7 @@ export function makeStyles(colors) {
     removeText: { color: colors.danger, fontSize: 11 },
     setRow: { flexDirection: 'row', gap: 16 },
     stepperGroup: { flexDirection: 'row', alignItems: 'center' },
-    stepperMiniLabel: { color: colors.textSecondary, fontSize: 11, width: 40 },
+    stepperMiniLabel: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', width: 40 },
     stepButton: {
       width: 26,
       height: 26,
@@ -83,12 +83,20 @@ export function makeStyles(colors) {
       justifyContent: 'center',
     },
     stepButtonText: { color: colors.textPrimary, fontSize: 15, fontWeight: '700' },
+    // Tappable to type: the faint underline hints it's editable.
     stepperValue: {
       color: colors.textPrimary,
       fontSize: 13,
-      width: 56,
       textAlign: 'center',
+      paddingVertical: 2,
+      paddingHorizontal: 0,
+      marginHorizontal: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.cardBorder,
     },
+    // Weight is wider so "142.5" fits even with large system text.
+    repsValue: { width: 40 },
+    weightValue: { width: 64 },
     formLinksRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
