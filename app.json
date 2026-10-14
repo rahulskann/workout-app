@@ -7,9 +7,19 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#121212",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
+    },
     "android": {
       "package": "com.rahulkannan.splitcycle",
-      "backgroundColor": "#121212"
+      "backgroundColor": "#121212",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#14171C"
+      }
     },
     "ios": {
       "bundleIdentifier": "com.rahulkannan.splitcycle",
