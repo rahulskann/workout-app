@@ -30,7 +30,7 @@ async function logAndFinish(exercise, weight) {
   await commitDrafts([exercise], `${visit}-next`);
 }
 
-// Three finished sessions, so the first one rolls out of history into the queue.
+// Three finished sessions, one more than history keeps.
 async function logThree(exercise) {
   await logAndFinish(exercise, 100);
   await logAndFinish(exercise, 110);
@@ -163,11 +163,11 @@ describe('history and export queue', () => {
     expect(state.maxWeight).toBe(0);
   });
 
-  it('sends the session that rolled out of history and clears it from the queue', async () => {
+  it('sends each session as soon as its day ends', async () => {
     global.fetch.mockResolvedValue({ ok: true });
     await useWebhook();
 
-    await logThree(squat);
+    await logAndFinish(squat, 100);
     await flushPendingExports();
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -177,7 +177,46 @@ describe('history and export queue', () => {
     expect(await getPendingExports()).toEqual([]);
   });
 
-  it('keeps the old session queued when offline', async () => {
+  it('sends every session in order, including ones history no longer shows', async () => {
+    global.fetch.mockResolvedValue({ ok: true });
+    await useWebhook();
+
+    await logThree(squat);
+    await flushPendingExports();
+
+    const sent = global.fetch.mock.calls.map(([, req]) => JSON.parse(req.body).sets[0].weight);
+    expect(sent).toEqual([100, 110, 120]);
+    expect(await getPendingExports()).toEqual([]);
+  });
+
+  it('sends sessions saved before every session was exported, once, with the next one', async () => {
+    global.fetch.mockResolvedValue({ ok: true });
+    await useWebhook();
+    // History from before this change: both sessions were never sent.
+    await AsyncStorage.setItem(
+      'workout:exercise:barbell_squat',
+      JSON.stringify({
+        history: [
+          { date: '2026-10-01', sets: sets(90) },
+          { date: '2026-10-01', sets: sets(95) },
+        ],
+        maxWeight: 95,
+        today: null,
+      })
+    );
+
+    await logAndFinish(squat, 100);
+    await flushPendingExports();
+    await logAndFinish(squat, 105);
+    await flushPendingExports();
+
+    const bodies = global.fetch.mock.calls.map(([, req]) => JSON.parse(req.body));
+    expect(bodies.map((b) => b.sets[0].weight)).toEqual([90, 95, 100, 105]);
+    expect(new Set(bodies.map((b) => b.id)).size).toBe(4);
+    expect(await getPendingExports()).toEqual([]);
+  });
+
+  it('keeps sessions queued when offline', async () => {
     global.fetch.mockRejectedValue(new TypeError('Network request failed'));
     await useWebhook();
 
@@ -186,7 +225,7 @@ describe('history and export queue', () => {
 
     const state = await getExerciseState(squat);
     expect(state.history.map((h) => h.sets[0].weight)).toEqual([110, 120]);
-    expect(await getPendingExports()).toHaveLength(1);
+    expect(await getPendingExports()).toHaveLength(3);
   });
 
   it('keeps sessions queued while no Sheets destination is set up', async () => {
@@ -194,7 +233,7 @@ describe('history and export queue', () => {
     await flushPendingExports();
 
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(await getPendingExports()).toHaveLength(1);
+    expect(await getPendingExports()).toHaveLength(3);
   });
 
   it('does not drop a session queued while a flush is in progress', async () => {
@@ -204,9 +243,9 @@ describe('history and export queue', () => {
       .mockImplementationOnce(() => new Promise((resolve) => (finishFirstSend = resolve)))
       .mockResolvedValue({ ok: true });
 
-    await logThree(squat); // queues squat and starts a flush that hangs on fetch
+    await logAndFinish(squat, 100); // queues squat and starts a flush that hangs on fetch
     while (!finishFirstSend) await new Promise((r) => setImmediate(r));
-    await logThree(press); // queues press while that flush is still sending
+    await logAndFinish(press, 90); // queues press while that flush is still sending
     finishFirstSend({ ok: true });
     await flushPendingExports();
 

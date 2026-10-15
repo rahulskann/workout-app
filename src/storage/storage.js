@@ -14,8 +14,9 @@ const KEYS = {
 // ---------- Exercise state (PR + rolling 2-session history) ----------
 
 // Saved per exercise: { history, maxWeight, maxSeconds, today }.
-//  - history: up to 2 finished sessions, each { date, sets }, where sets are
-//      [{ weight, reps }] for weighted exercises and [{ seconds }] for timed
+//  - history: up to 2 finished sessions, each { date, sets, exported }, where
+//      sets are [{ weight, reps }] for weighted exercises and [{ seconds }]
+//      for timed, and exported marks it as already queued for the sheet
 //  - maxWeight / maxSeconds: the PR -- heaviest set, or longest timed set
 //  - today: what was ticked or logged during one visit of its day --
 //      { visitId } for checkbox exercises, or
@@ -109,9 +110,9 @@ export async function logSession(exercise, payload, visitId) {
   if (current.today && current.today.visitId !== visitId) {
     // A draft from a visit that never got committed (app closed mid-way):
     // finish it first rather than overwrite it.
-    const { next, dropped } = finishDraft(current);
-    if (dropped) {
-      await queueExport(dropped);
+    const { next, exports } = finishDraft(current);
+    if (exports.length) {
+      await queueExports(exports);
       queued = true;
     }
     current = { ...current, ...next };
@@ -153,33 +154,29 @@ export async function commitDrafts(exercises, keepVisitId) {
     if (!raw) continue;
     const state = parseExerciseState(exercises[i], JSON.parse(raw), keepVisitId);
     if (!state.today || state.today.visitId === keepVisitId) continue;
-    const { next, dropped } = finishDraft(state);
+    const { next, exports } = finishDraft(state);
     // Queue before saving: if the app dies in between, the worst case is a
     // duplicate row in the sheet rather than a lost session.
-    if (dropped) await queueExport(dropped);
+    if (exports.length) await queueExports(exports);
     await saveExerciseState(exercises[i].exerciseId, next);
   }
   flushPendingExports();
 }
 
-// The 2-entry rolling FIFO from the spec: today's draft is appended to
-// history, and once history is full the oldest session is dropped and
-// returned as an export payload (the queue keeps it until Sheets confirms).
+// Today's draft joins the 2-session history the app shows (the oldest drops
+// off once it's full) and is queued for the sheet straight away, so the sheet
+// is a complete log. Sessions saved before that -- when only the ones dropping
+// off history were sent -- have no `exported` flag; they're queued with the
+// next session, oldest first, so none are skipped.
 function finishDraft(state) {
   const { today } = state;
   const kept = { history: state.history, maxWeight: state.maxWeight, maxSeconds: state.maxSeconds };
   if (!today?.sets?.length) {
-    return { next: { ...kept, today: null }, dropped: null };
+    return { next: { ...kept, today: null }, exports: [] };
   }
-  const entry = { date: today.date, sets: today.sets };
-  let history = [...state.history];
-  let droppedEntry = null;
-  if (history.length >= 2) {
-    droppedEntry = history[0];
-    history = [...history.slice(1), entry];
-  } else {
-    history.push(entry);
-  }
+  const entry = { date: today.date, sets: today.sets, exported: true };
+  const unsent = state.history.filter((h) => !h.exported);
+  const history = [...state.history.map((h) => ({ ...h, exported: true })), entry].slice(-2);
   return {
     next: {
       history,
@@ -187,7 +184,7 @@ function finishDraft(state) {
       maxSeconds: Math.max(kept.maxSeconds || 0, ...numbers(today.sets, 'seconds')),
       today: null,
     },
-    dropped: droppedEntry && toExportPayload(state, droppedEntry, today.routineName),
+    exports: [...unsent, entry].map((h) => toExportPayload(state, h, today.routineName)),
   };
 }
 
@@ -206,12 +203,17 @@ export function formatSetForSheet(s) {
   return typeof s.seconds === 'number' ? formatDuration(s.seconds) : `${s.weight}x${s.reps}`;
 }
 
+// Keeps queue ids unique when several rows are queued in the same millisecond
+// (the flush removes sent rows by id).
+let exportSeq = 0;
+
 function toExportPayload(exercise, entry, routineName) {
   const sets = entry.sets || [];
   const timed = isTimedSession(sets);
   const best = Math.max(0, ...numbers(sets, timed ? 'seconds' : 'weight'));
+  exportSeq += 1;
   return {
-    id: `${exercise.exerciseId}:${entry.date}:${Date.now()}`,
+    id: `${exercise.exerciseId}:${entry.date}:${Date.now()}-${exportSeq}`,
     routineName,
     exerciseId: exercise.exerciseId,
     exerciseName: exercise.name,
@@ -279,9 +281,8 @@ export async function exportSessionToSheets(payload) {
 }
 
 // ---------- Export queue ----------
-// Sessions that rolled out of local history wait here until a destination
-// confirms them, so going offline at the gym (or not having set up Sheets
-// yet) never loses data. Every read-modify-write of the queue goes through
+// Finished sessions wait here until a destination confirms them, so going
+// offline at the gym (or not having set up Sheets yet) never loses data. Every read-modify-write of the queue goes through
 // withQueueLock so a flush finishing can't overwrite an item queued mid-flush.
 
 let queueLock = Promise.resolve();
@@ -297,10 +298,10 @@ async function readPendingExports() {
   return raw ? JSON.parse(raw) : [];
 }
 
-function queueExport(payload) {
+function queueExports(payloads) {
   return withQueueLock(async () => {
     const queue = await readPendingExports();
-    queue.push(payload);
+    queue.push(...payloads);
     await AsyncStorage.setItem(KEYS.PENDING_EXPORTS, JSON.stringify(queue));
   });
 }

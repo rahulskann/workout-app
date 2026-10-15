@@ -12,8 +12,9 @@ on the next day. Everything is stored on the phone and works offline.
   change it, or undo it.
 - **Media:** a photo of the machine, a recorded video, and/or a YouTube link per exercise. The
   warm-ups, cool-downs, stretches and mobility drills in the 5-Day Cycle come with YouTube videos.
-- **Google Sheets:** finished sessions that roll out of the two-session history are appended to a
-  spreadsheet. Anything that can't be sent (offline, not signed in) waits in a queue and retries.
+- **Google Sheets:** every session is appended to a spreadsheet when you finish the day, so the
+  sheet is a complete log. Anything that can't be sent (offline, not signed in) waits in a queue
+  and retries.
 - **Sharing and backups:** share a plan as a file someone can import, or back up everything to
   restore on a new phone.
 
